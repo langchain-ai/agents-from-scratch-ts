@@ -17,23 +17,7 @@ export function getTools({ toolNames, includeGmail = false }: GetToolsOptions = 
     check_calendar_availability: checkCalendarAvailability,
   };
   
-  // Add Gmail tools if requested
-  if (includeGmail) {
-    try {
-      // Import Gmail tools dynamically
-      const gmailTools = require("./gmail/gmail-tools");
-      
-      Object.assign(allTools, {
-        fetch_emails_tool: gmailTools.fetchEmails,
-        send_email_tool: gmailTools.sendEmail,
-        check_calendar_tool: gmailTools.checkCalendar,
-        schedule_meeting_tool: gmailTools.scheduleMeeting,
-      });
-    } catch (error) {
-      // If Gmail tools aren't available, continue without them
-      console.warn("Gmail tools not available:", error);
-    }
-  }
+
   
   if (!toolNames) {
     return Object.values(allTools);
@@ -51,4 +35,4 @@ export function getToolsByName(tools?: StructuredTool[]): Record<string, Structu
     acc[tool.name] = tool;
     return acc;
   }, {});
-} 
+}
