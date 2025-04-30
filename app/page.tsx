@@ -12,9 +12,16 @@ import {
   Annotation,
   messagesStateReducer
 } from "@langchain/langgraph";
-import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import { 
+  BaseMessage, 
+  HumanMessage, 
+  AIMessage, 
+  SystemMessage,
+  isAIMessage
+} from "@langchain/core/messages";
 import { ToolCall, ToolMessage } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 // LOCAL IMPORTS
 import {
@@ -89,9 +96,12 @@ export const createEmailAssistant = async () => {
     email_input: Annotation<EmailData>(),
     classification_decision: Annotation<"ignore" | "respond" | "notify" | undefined>(),
   });
+
+  // Define proper TypeScript types for our state
+  type AgentStateType = typeof AgentState.State;
   
   // Nodes
-  const llmCall = async (state: typeof AgentState.State) => {
+  const llmCall = async (state: AgentStateType) => {
     /**
      * LLM decides whether to call a tool or not
      * This is the main decision-making node that generates responses or tool calls
@@ -113,52 +123,11 @@ export const createEmailAssistant = async () => {
     };
   };
   
-  const toolNode = async (state: typeof AgentState.State) => {
-    /**
-     * Performs the tool call based on LLM's decision
-     * Similar to the Python version's tool_node function
-     */
-    const messages = [...state.messages];
-    const lastMessage = messages[messages.length - 1];
-    const result: BaseMessage[] = [];
-    
-    // Check if this message has tool calls
-    if (lastMessage instanceof AIMessage && lastMessage.tool_calls && Array.isArray(lastMessage.tool_calls)) {
-      for (const toolCall of lastMessage.tool_calls) {
-        try {
-          const tool = toolsByName[toolCall.name];
-          if (!tool) {
-            throw new Error(`Tool not found: ${toolCall.name}`);
-          }
-          const observation = await tool.invoke(toolCall.args);
-          
-          // Create a proper tool message
-          const toolMessage = new ToolMessage({
-            content: observation,
-            tool_call_id: toolCall.id ?? ""
-          });
-          
-          result.push(toolMessage);
-        } catch (error: any) {
-          console.error(`Error executing tool ${toolCall.name}:`, error);
-          // Create error message
-          const errorMessage = new ToolMessage({
-            content: `Error executing tool ${toolCall.name}: ${error.message}`,
-            tool_call_id: toolCall.id ?? ""
-          });
-          
-          result.push(errorMessage);
-        }
-      }
-    }
-    
-    return {
-      messages: result
-    };
-  };
+  // Create the tool node using LangGraph's ToolNode
+  const toolNode = new ToolNode(tools);
   
   // Conditional edge function
-  const shouldContinue = (state: typeof AgentState.State) => {
+  const shouldContinue = (state: AgentStateType) => {
     /**
      * Route to environment for tool execution, or end if Done tool called
      * Similar to the Python version's should_continue function
@@ -168,11 +137,10 @@ export const createEmailAssistant = async () => {
     
     const lastMessage = messages[messages.length - 1];
     
-    if (lastMessage instanceof AIMessage && lastMessage.tool_calls && Array.isArray(lastMessage.tool_calls)) {
-      for (const toolCall of lastMessage.tool_calls) {
-        if (toolCall.name === "Done") {
-          return END;
-        }
+    if (isAIMessage(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+      // Check if any tool call is the "Done" tool
+      if (lastMessage.tool_calls.some(toolCall => toolCall.name === "Done")) {
+        return END;
       }
       return "environment";
     }
@@ -180,13 +148,13 @@ export const createEmailAssistant = async () => {
     return END;
   };
   
-  // Define node names as a union type
+  // Define node names as a union type for better type safety
   type AgentNodes = typeof START | typeof END | "llm_call" | "environment" | "triage_router" | "response_agent";
 
   // Use the type parameter to specify allowed node names
   const agentBuilder = new StateGraph<typeof AgentState.spec, 
-    typeof AgentState.State, 
-    Partial<typeof AgentState.State>,
+    AgentStateType, 
+    Partial<AgentStateType>,
     AgentNodes>(AgentState);
   
   // Add nodes
@@ -195,14 +163,21 @@ export const createEmailAssistant = async () => {
   
   // Add edges to connect nodes
   agentBuilder.addEdge(START, "llm_call");
-  agentBuilder.addConditionalEdges("llm_call", shouldContinue);
+  agentBuilder.addConditionalEdges(
+    "llm_call",
+    shouldContinue,
+    {
+      "environment": "environment",
+      [END]: END
+    }
+  );
   agentBuilder.addEdge("environment", "llm_call");
   
   // Compile the agent
   const agent = agentBuilder.compile();
   
   // Triage router function
-  const triageRouter = async (state: typeof AgentState.State) => {
+  const triageRouter = async (state: AgentStateType) => {
     /**
      * Analyze email content to decide if we should respond, notify, or ignore.
      * 
@@ -245,7 +220,7 @@ export const createEmailAssistant = async () => {
       const classification = result.classification;
       
       let goto = END;
-      let update: Partial<typeof AgentState.State> = {
+      let update: Partial<AgentStateType> = {
         classification_decision: classification,
       };
       
@@ -289,17 +264,11 @@ export const createEmailAssistant = async () => {
     }
   };
   
-  // Input state definition
-  const InputState = Annotation.Root({
-    email_input: Annotation<EmailData>(),
-  });
-  
-  // Similar approach for overallWorkflow
-
+  // Define the overall workflow with properly typed nodes
   const overallWorkflow = new StateGraph<typeof AgentState.spec, 
-  typeof AgentState.State, 
-  Partial<typeof AgentState.State>,
-  AgentNodes>(AgentState);
+    AgentStateType, 
+    Partial<AgentStateType>,
+    AgentNodes>(AgentState);
   
   overallWorkflow.addNode("triage_router", triageRouter, { ends: ["response_agent", END] });
   overallWorkflow.addNode("response_agent", agent);

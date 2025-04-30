@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { EmailData } from "./schemas"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -28,23 +29,49 @@ interface Example {
 }
 
 /**
- * Format email details into a nicely formatted markdown string for display
+ * Email parsing and formatting utilities
+ */
+
+/**
+ * Parses an email to extract key information
+ * @param email The email data to parse
+ * @returns A tuple of [author, to, subject, emailThread]
+ */
+export function parseEmail(email: EmailData): [string, string, string, string] {
+  try {
+    // Extract key information from email data
+    const author = email.from_email;
+    const to = email.to_email;
+    const subject = email.subject;
+    const emailThread = email.page_content;
+
+    return [author, to, subject, emailThread];
+  } catch (error) {
+    console.error("Error parsing email:", error);
+    throw new Error("Failed to parse email");
+  }
+}
+
+/**
+ * Formats email data into a standardized markdown format for LLM processing
+ * @param subject Email subject
+ * @param author Email sender
+ * @param to Email recipient
+ * @param emailThread Email body content
+ * @returns Formatted markdown string
  */
 export function formatEmailMarkdown(
-  subject: string, 
-  author: string, 
-  to: string, 
+  subject: string,
+  author: string,
+  to: string,
   emailThread: string
 ): string {
-  return `
-**Subject**: ${subject}
+  return `## Email: ${subject}
+
 **From**: ${author}
 **To**: ${to}
 
-${emailThread}
-
----
-`;
+${emailThread}`;
 }
 
 /**
@@ -99,66 +126,6 @@ ${JSON.stringify(toolCall.args, null, 2)}
   }
   
   return display;
-}
-
-/**
- * Parse an email input dictionary, supporting multiple schemas.
- * 
- * Supports multiple schema formats:
- * - Standard schema (author, to, subject, email_thread)
- * - Gmail-specific schema (from_email, to_email, subject, page_content)
- * - Direct API schema (from, to, subject, body)
- */
-export function parseEmail(emailInput: Record<string, any>): [string, string, string, string] {
-  // Detect schema based on keys present in the input
-  if ("author" in emailInput && "email_thread" in emailInput) {
-    // Standard schema
-    return [
-      emailInput.author,
-      emailInput.to,
-      emailInput.subject,
-      emailInput.email_thread,
-    ];
-  } else if ("from_email" in emailInput && "page_content" in emailInput) {
-    // Gmail schema
-    return [
-      emailInput.from_email,
-      emailInput.to_email,
-      emailInput.subject,
-      emailInput.page_content,
-    ];
-  } else if ("from" in emailInput && "body" in emailInput) {
-    // Direct API schema
-    return [
-      emailInput.from,
-      emailInput.to,
-      emailInput.subject,
-      emailInput.body,
-    ];
-  } else {
-    // Unknown schema, try to handle gracefully by looking for equivalent fields
-    const author = 
-      emailInput.author || 
-      emailInput.from_email || 
-      emailInput.from || 
-      "Unknown Sender";
-      
-    const to = 
-      emailInput.to || 
-      emailInput.to_email || 
-      "Unknown Recipient";
-      
-    const subject = emailInput.subject || "No Subject";
-    
-    const content = 
-      emailInput.email_thread || 
-      emailInput.page_content || 
-      emailInput.body || 
-      emailInput.content || 
-      "No content available";
-      
-    return [author, to, subject, content];
-  }
 }
 
 /**
