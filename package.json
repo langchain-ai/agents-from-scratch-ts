@@ -23,6 +23,5 @@
     "eslint": "^9",
     "typescript": "^5",
     "tsx": "^4.7.0"
-  },
-  "packageManager": "pnpm@10.9.0||npm@10.2.0||yarn@1.22.0"
+  }
 }
