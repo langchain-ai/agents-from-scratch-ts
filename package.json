@@ -2,38 +2,25 @@
   "name": "email-assistant",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "dev": "tsx scripts/dev.ts",
+    "lint": "eslint .",
     "agent": "langgraphjs dev"
   },
   "dependencies": {
     "@langchain/core": "^0.3.49",
     "@langchain/langgraph": "^0.2.67",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
     "langchain": "^0.3.24",
-    "lucide-react": "^0.503.0",
-    "next": "15.3.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.2.0",
     "zod": "^3.24.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@langchain/langgraph-cli": "^0.0.30",
-    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.3.1",
-    "tailwindcss": "^4",
-    "tw-animate-css": "^1.2.8",
-    "typescript": "^5"
+    "typescript": "^5",
+    "tsx": "^4.7.0"
   },
   "packageManager": "pnpm@10.9.0+sha512.0486e394640d3c1fb3c9d43d49cf92879ff74f8516959c235308f5a8f62e2e19528a65cdc2a3058f587cde71eba3d5b56327c8c33a97e4c4051ca48a10ca2d5f"
 }

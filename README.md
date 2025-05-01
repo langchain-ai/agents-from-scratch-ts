@@ -9,7 +9,7 @@
 
 ## TypeScript Email Assistant Implementation
 
-The TypeScript Email Assistant (`app/page.tsx`) implements an LLM-powered workflow to process emails:
+This is a vanilla TypeScript project for email assistant workflows using LangChain and LangGraph.
 
 ### Architecture
 - Uses `StateGraph` from LangGraph to create a multi-step workflow
@@ -43,17 +43,37 @@ The TypeScript Email Assistant (`app/page.tsx`) implements an LLM-powered workfl
 - Properly typed with TypeScript for complete type safety
 - Uses command pattern to transition between states
 
-### P2 
-- [ ] notebooks 
-- [ ] video course [1,2,3,4]
+### Project Structure
+- `scripts/`: TypeScript scripts to run the email assistant
+- `lib/`: Utility functions, tools, and shared types
+  - `lib/tools/`: Tool implementations
+  - `lib/prompts.ts`: Prompt templates
+  - `lib/schemas.ts`: TypeScript/Zod schemas
+  - `lib/utils.ts`: Utility functions
 
-### New TS files
-- `lib/tools/`
-- `lib/prompts.ts`
-- `lib/schemas.ts`
-- `lib/utils.ts`
+## Getting Started
 
-### Course outline 
+First, install dependencies:
+
+```bash
+npm install
+# or
+yarn
+# or
+pnpm install
+```
+
+Then, run the development script:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+```
+
+## Course outline 
 > BUILD
 
 > EVAL

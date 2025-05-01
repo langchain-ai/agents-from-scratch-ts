@@ -1,4 +1,3 @@
-import Image from "next/image";
 // LangChain imports for chat models
 import { initChatModel } from "langchain/chat_models/universal";
 
@@ -27,7 +26,7 @@ import { ToolNode } from "@langchain/langgraph/prebuilt";
 import {
   getTools,
   getToolsByName
-} from "../lib/tools/base";
+} from "../lib/tools/base.js";
 import {
   agentSystemPromptBaseline,
   triageSystemPrompt,
@@ -40,40 +39,19 @@ import {
   defaultCalPreferences,
   defaultTriageInstructions,
   AGENT_TOOLS_PROMPT
-} from "../lib/prompts";
+} from "../lib/prompts.js";
 import {
   RouterSchema,
   RouterOutput,
   EmailData,
   StateInput,
   State,
-} from "../lib/schemas";
+} from "../lib/schemas.js";
 import {
   parseEmail,
   formatEmailMarkdown
-} from "../lib/utils";
+} from "../lib/utils.js";
 
-export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <h1>Hello World</h1>
-      
-      <div className="flex flex-col w-full max-w-3xl gap-8">
-        <h2 className="text-2xl font-bold">Email Assistant</h2>
-        <p>This page contains the TypeScript implementation of the email assistant workflow.</p>
-        
-        <div className="mt-4">
-          <a 
-            href="/test-email-assistant" 
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Test Email Assistant
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // Create the email assistant workflow
 export const createEmailAssistant = async () => {
@@ -140,7 +118,7 @@ export const createEmailAssistant = async () => {
     
     if (isAIMessage(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
       // Check if any tool call is the "Done" tool
-      if (lastMessage.tool_calls.some(toolCall => toolCall.name === "Done")) {
+      if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
         return END;
       }
       return "environment";

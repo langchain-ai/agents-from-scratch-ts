@@ -26,7 +26,7 @@ import { ToolNode } from "@langchain/langgraph/prebuilt";
 import {
   getTools,
   getToolsByName
-} from "../../lib/tools/base";
+} from "../lib/tools/base.js";
 import {
   HITL_TOOLS_PROMPT,
   triageSystemPrompt,
@@ -36,19 +36,19 @@ import {
   defaultResponsePreferences,
   defaultCalPreferences,
   defaultTriageInstructions
-} from "../../lib/prompts";
+} from "../lib/prompts.js";
 import {
   RouterSchema,
   RouterOutput,
   EmailData,
   StateInput,
   State,
-} from "../../lib/schemas";
+} from "../lib/schemas.js";
 import {
   parseEmail,
   formatEmailMarkdown,
   formatForDisplay
-} from "../../lib/utils";
+} from "../lib/utils.js";
 
 /**
  * Create the Human-in-the-Loop Email Assistant
