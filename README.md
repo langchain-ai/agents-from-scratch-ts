@@ -31,29 +31,20 @@ pnpm agent
 
 - [TypeScript Email Assistant Implementation](#typescript-email-assistant-implementation)
 - [Project Structure](#project-structure)
-- [Running the Application](#running-the-application)
-  - [Standard Email Assistant](#run-the-standard-email-assistant)
-  - [Human-in-the-Loop Assistant](#run-the-human-in-the-loop-hitl-email-assistant)
 - [LangGraph Studio Testing](#langgraph-studio-testing)
   - [Node Details and Expected Outputs](#node-details-and-expected-outputs)
   - [Testing Different Scenarios](#testing-different-scenarios)
 - [Course Outline](#course-outline)
 - [To-Do List](#to-do-list-tues-apr-29---fri-may-2nd)
 
-## To Do List Tues Apr 29 - Fri May 2nd
-- [x] prompts 
-- [x] schemas  
-- [x] mock tools 
-- [x] utils 
-- [x] email assistant 
-- [x ] email_assistant_hitl
-- [ in progress] email_assistant_memory
-- [ ] improve implementations
-- [ ] improve structure to mirror Python more closely 
 
-## TypeScript Email Assistant Implementation
-
-This is a vanilla TypeScript project for email assistant workflows using LangChain and LangGraph.
+### Project Structure
+- `scripts/`: TypeScript scripts to run the email assistant
+- `lib/`: Utility functions, tools, and shared types
+  - `lib/tools/`: Tool implementations
+  - `lib/prompts.ts`: Prompt templates
+  - `lib/schemas.ts`: TypeScript/Zod schemas
+  - `lib/utils.ts`: Utility functions
 
 ### Architecture
 - Uses `StateGraph` from LangGraph to create a multi-step workflow
@@ -87,44 +78,7 @@ This is a vanilla TypeScript project for email assistant workflows using LangCha
 - Properly typed with TypeScript for complete type safety
 - Uses command pattern to transition between states
 
-### Project Structure
-- `scripts/`: TypeScript scripts to run the email assistant
-- `lib/`: Utility functions, tools, and shared types
-  - `lib/tools/`: Tool implementations
-  - `lib/prompts.ts`: Prompt templates
-  - `lib/schemas.ts`: TypeScript/Zod schemas
-  - `lib/utils.ts`: Utility functions
 
-## Running the Application
-
-### Run the standard email assistant:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-```
-
-### Run the human-in-the-loop (HITL) email assistant:
-
-```bash
-npm run dev:hitl
-# or
-yarn dev:hitl
-# or
-pnpm dev:hitl
-```
-
-## Course outline 
-> BUILD
-
-> EVAL
-
-> HITL
-
-> MEMORY
 
 
 ## LangGraph Studio Testing
@@ -230,4 +184,23 @@ Try modifying the email content to test different classification outcomes:
 3. **For "ignore" classification**: Use marketing language, irrelevant information, or messages clearly meant for others
 
 
+## Course outline 
+> BUILD
+
+> EVAL
+
+> HITL
+
+> MEMORY
+
+## To Do List Tues Apr 29 - Fri May 2nd
+- [x] prompts 
+- [x] schemas  
+- [x] mock tools 
+- [x] utils 
+- [x] email assistant 
+- [x ] email_assistant_hitl
+- [ in progress] email_assistant_memory
+- [ ] improve implementations
+- [ ] improve structure to mirror Python more closely 
 
