@@ -3,8 +3,8 @@
   "dockerfile_lines": [],
   "dependencies": ["."],
   "graphs": {
-    "emailAssistant": "./app/page.tsx:getEmailAssistant",
-    "hitlEmailAssistant": "./app/email_assistant_hitl/page.tsx:getHitlEmailAssistant"
+    "emailAssistant": "./scripts/email_assistant.ts:getEmailAssistant",
+    "hitlEmailAssistant": "./scripts/email_assistant_hitl.ts:getHitlEmailAssistant"
   },
   "env": ".env"
 } 
