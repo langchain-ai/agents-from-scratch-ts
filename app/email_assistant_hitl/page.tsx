@@ -26,7 +26,7 @@ import { ToolNode } from "@langchain/langgraph/prebuilt";
 import {
   getTools,
   getToolsByName
-} from "../lib/tools/base";
+} from "../../lib/tools/base";
 import {
   HITL_TOOLS_PROMPT,
   triageSystemPrompt,
@@ -36,19 +36,19 @@ import {
   defaultResponsePreferences,
   defaultCalPreferences,
   defaultTriageInstructions
-} from "../lib/prompts";
+} from "../../lib/prompts";
 import {
   RouterSchema,
   RouterOutput,
   EmailData,
   StateInput,
   State,
-} from "../lib/schemas";
+} from "../../lib/schemas";
 import {
   parseEmail,
   formatEmailMarkdown,
   formatForDisplay
-} from "../lib/utils";
+} from "../../lib/utils";
 
 /**
  * Create the Human-in-the-Loop Email Assistant
@@ -434,8 +434,12 @@ export const createHitlEmailAssistant = async () => {
     Partial<AgentStateType>,
     AgentNodes>(AgentState);
   
-  overallWorkflow.addNode("triage_router", triageRouter);
-  overallWorkflow.addNode("triage_interrupt_handler", triageInterruptHandler);
+  overallWorkflow.addNode("triage_router", triageRouter, {
+    ends: ["triage_interrupt_handler", "response_agent", END]
+  });
+  overallWorkflow.addNode("triage_interrupt_handler", triageInterruptHandler, {
+    ends: ["response_agent", END]
+  });
   overallWorkflow.addNode("response_agent", responseAgent);
   overallWorkflow.addEdge(START, "triage_router");
   

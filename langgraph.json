@@ -1,0 +1,10 @@
+{
+  "node_version": "20",
+  "dockerfile_lines": [],
+  "dependencies": ["."],
+  "graphs": {
+    "emailAssistant": "./app/page.tsx:getEmailAssistant",
+    "hitlEmailAssistant": "./app/email_assistant_hitl/page.tsx:getHitlEmailAssistant"
+  },
+  "env": ".env"
+} 
