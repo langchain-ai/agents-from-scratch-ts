@@ -38,7 +38,8 @@ import {
   defaultBackground,
   defaultResponsePreferences,
   defaultCalPreferences,
-  defaultTriageInstructions
+  defaultTriageInstructions,
+  AGENT_TOOLS_PROMPT
 } from "../lib/prompts";
 import {
   RouterSchema,
@@ -108,7 +109,7 @@ export const createEmailAssistant = async () => {
      */
     const messages = [...state.messages];
     const systemPromptContent = agentSystemPrompt
-      .replace("{tools_prompt}", "AGENT_TOOLS_PROMPT")
+      .replace("{tools_prompt}", AGENT_TOOLS_PROMPT)
       .replace("{background}", defaultBackground)
       .replace("{response_preferences}", defaultResponsePreferences)
       .replace("{cal_preferences}", defaultCalPreferences);
