@@ -61,9 +61,12 @@ export const createHitlEmailAssistant = async () => {
   
   // Initialize the LLM for use with router / structured output
   const llm = await initChatModel("openai:gpt-4");
-  const llmRouter = llm.withStructuredOutput(RouterSchema);
   
-  // Initialize the LLM, enforcing tool use for agent
+  // Don't use withStructuredOutput since it's causing message coercion issues
+  // Instead we'll use the regular LLM and parse the output manually
+  // const llmRouter = llm.withStructuredOutput(RouterSchema);
+  
+  // Initialize a separate LLM instance for tool use
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
   
   // Define the agent state
@@ -248,28 +251,49 @@ export const createHitlEmailAssistant = async () => {
       // Create email markdown for Agent Inbox in case of notification  
       const emailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);
       
-      // Run the router LLM
-      const result = await llmRouter.invoke([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
+      // Modified prompt to instruct JSON output format
+      const jsonSystemPrompt = `${systemPrompt}\n\nProvide your response in the following JSON format:
+{
+  "reasoning": "your step-by-step reasoning",
+  "classification": "ignore" | "respond" | "notify"
+}`;
+      
+      // Use the regular LLM instead of the structured output version
+      const response = await llm.invoke([
+        new SystemMessage({ content: jsonSystemPrompt }),
+        new HumanMessage({ content: userPrompt })
       ]);
       
-      // Decision
-      const classification = result.classification;
+      // Parse the JSON response manually
+      let classification: "ignore" | "respond" | "notify" = "notify"; // Default to notify
+      
+      try {
+        // Extract JSON from the response content
+        const responseText = response.content.toString();
+        const parsedResponse = JSON.parse(responseText);
+        
+        if (parsedResponse.classification && 
+            ["ignore", "respond", "notify"].includes(parsedResponse.classification)) {
+          classification = parsedResponse.classification;
+        }
+      } catch (parseError) {
+        console.error("Error parsing LLM response as JSON:", parseError);
+        console.log("Raw response:", response.content.toString());
+        // Fall back to notify if parsing fails
+      }
       
       let goto: "triage_interrupt_handler" | "response_agent" | typeof END = END;
-      let update: Partial<AgentStateType> = {
-        classification_decision: classification,
-      };
+      let update: Partial<AgentStateType> = {};
       
-      const newMessages: BaseMessage[] = [];
-      newMessages.push(
+      // Store only the classification decision
+      update.classification_decision = classification;
+      
+      // Create message
+      update.messages = [
         new HumanMessage({
-          content: JSON.stringify(email_input)
+          content: `Email to review: ${emailMarkdown}`
         })
-      );
-      
-      update.messages = newMessages;
+      ];
       
       if (classification === "respond") {
         console.log("📧 Classification: RESPOND - This email requires a response");
