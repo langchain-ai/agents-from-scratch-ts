@@ -58,17 +58,13 @@ export const createEmailAssistant = async () => {
   const tools = getTools();
   const toolsByName = getToolsByName(tools);
   
-  // Initialize the LLM for use with router / structured output
+  // Initialize the LLM
   const llm = await initChatModel("openai:gpt-4", { 
     temperature: 0.0,
     openAIApiKey: process.env.OPENAI_API_KEY 
   });
-
-  // We won't use withStructuredOutput since it's causing message coercion issues
-  // Instead we'll use the regular LLM and parse the output manually
-  // const llmRouter = llm.withStructuredOutput(RouterSchema);
-
-  // Initialize a separate LLM instance for tool use
+  
+  // Initialize the LLM for tool use
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
   
   // Define the agent state
@@ -194,14 +190,14 @@ export const createEmailAssistant = async () => {
       // Create email markdown for Agent Inbox in case of notification  
       const emailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);
       
-      // Modified prompt to instruct JSON output format
+      // Add JSON format instruction to the system prompt
       const jsonSystemPrompt = `${systemPrompt}\n\nProvide your response in the following JSON format:
 {
   "reasoning": "your step-by-step reasoning",
   "classification": "ignore" | "respond" | "notify"
 }`;
       
-      // Use the regular LLM instead of the structured output version
+      // Use the regular LLM instead of withStructuredOutput
       const response = await llm.invoke([
         new SystemMessage({ content: jsonSystemPrompt }),
         new HumanMessage({ content: userPrompt })
@@ -225,10 +221,9 @@ export const createEmailAssistant = async () => {
       }
       
       let goto = END;
-      let update: Partial<AgentStateType> = {};
-      
-      // Store classification decision
-      update.classification_decision = classification;
+      let update: Partial<AgentStateType> = {
+        classification_decision: classification
+      };
       
       if (classification === "respond") {
         console.log("📧 Classification: RESPOND - This email requires a response");

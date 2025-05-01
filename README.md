@@ -203,4 +203,5 @@ Try modifying the email content to test different classification outcomes:
 - [ in progress] email_assistant_memory
 - [ ] improve implementations
 - [ ] improve structure to mirror Python more closely 
+- [ ] graph diagrams ```await graph.getGraph().drawMermaidPng()```
 

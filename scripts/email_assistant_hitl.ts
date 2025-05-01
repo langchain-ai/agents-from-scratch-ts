@@ -59,14 +59,10 @@ export const createHitlEmailAssistant = async () => {
   const tools = await getTools();
   const toolsByName = await getToolsByName();
   
-  // Initialize the LLM for use with router / structured output
+  // Initialize the LLM
   const llm = await initChatModel("openai:gpt-4");
   
-  // Don't use withStructuredOutput since it's causing message coercion issues
-  // Instead we'll use the regular LLM and parse the output manually
-  // const llmRouter = llm.withStructuredOutput(RouterSchema);
-  
-  // Initialize a separate LLM instance for tool use
+  // Initialize the LLM instance for tool use
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
   
   // Define the agent state
@@ -251,14 +247,14 @@ export const createHitlEmailAssistant = async () => {
       // Create email markdown for Agent Inbox in case of notification  
       const emailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);
       
-      // Modified prompt to instruct JSON output format
+      // Add JSON format instruction to the system prompt
       const jsonSystemPrompt = `${systemPrompt}\n\nProvide your response in the following JSON format:
 {
   "reasoning": "your step-by-step reasoning",
   "classification": "ignore" | "respond" | "notify"
 }`;
       
-      // Use the regular LLM instead of the structured output version
+      // Use the regular LLM instead of withStructuredOutput
       const response = await llm.invoke([
         new SystemMessage({ content: jsonSystemPrompt }),
         new HumanMessage({ content: userPrompt })
@@ -283,10 +279,9 @@ export const createHitlEmailAssistant = async () => {
       }
       
       let goto: "triage_interrupt_handler" | "response_agent" | typeof END = END;
-      let update: Partial<AgentStateType> = {};
-      
-      // Store only the classification decision
-      update.classification_decision = classification;
+      let update: Partial<AgentStateType> = {
+        classification_decision: classification
+      };
       
       // Create message
       update.messages = [
