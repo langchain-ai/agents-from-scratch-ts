@@ -60,7 +60,10 @@ export const createEmailAssistant = async () => {
   const toolsByName = getToolsByName(tools);
   
   // Initialize the LLM for use with router / structured output
-  const llm = await initChatModel("openai:gpt-4", { temperature: 0.0 });
+  const llm = await initChatModel("openai:gpt-4", { 
+    temperature: 0.0,
+    openAIApiKey: process.env.OPENAI_API_KEY 
+  });
   const llmRouter = llm.withStructuredOutput(RouterSchema);
   
   // Initialize the LLM, enforcing tool use (of any available tools) for agent

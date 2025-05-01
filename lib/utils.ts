@@ -1,10 +1,7 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-import { EmailData } from "./schemas"
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+import { EmailData } from "./schemas.js"
+
+
 
 /**
  * Email Assistant utilities

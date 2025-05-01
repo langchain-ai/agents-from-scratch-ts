@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { getEmailAssistant } from './email_assistant.js';
 import { EmailData } from '../lib/schemas.js';
 
