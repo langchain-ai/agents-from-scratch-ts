@@ -127,22 +127,62 @@ export const createHitlEmailAssistant = async () => {
       });
     }
     
+    // Keep track of processed tool calls to ensure all get responses
+    const processedToolCallIds = new Set<string>();
+    
+    // Handle only one tool call at a time for better human-in-the-loop experience
+    let processedOneToolCall = false;
+    
     // Iterate over the tool calls in the last message
     for (const toolCall of lastMessage.tool_calls) {
+      // Skip if we've already processed one tool call to allow proper resuming
+      if (processedOneToolCall) {
+        continue;
+      }
+      
+      // Get or create a valid tool call ID
+      const callId = toolCall.id ?? `fallback-id-${Date.now()}`;
+      
       // Allowed tools for HITL
       const hitlTools = ["write_email", "schedule_meeting", "Question"];
       
       // If tool is not in our HITL list, execute it directly without interruption
       if (!hitlTools.includes(toolCall.name)) {
         const tool = toolsByName[toolCall.name];
-        // Explicitly convert args to string if needed to satisfy type constraints
-        const args = typeof toolCall.args === 'string' ? toolCall.args : JSON.stringify(toolCall.args);
-        const observation = await tool.invoke(args);
-        const callId = toolCall.id ?? `fallback-id-${Date.now()}`;
-        result.push(new ToolMessage({
-          content: observation,
-          tool_call_id: callId
-        }));
+        if (!tool) {
+          console.error(`Tool ${toolCall.name} not found`);
+          result.push(new ToolMessage({
+            content: `Error: Tool ${toolCall.name} not found`,
+            tool_call_id: callId
+          }));
+          processedToolCallIds.add(callId);
+          processedOneToolCall = true;
+          continue;
+        }
+        
+        try {
+          // Parse the args properly - if it's a string, parse it as JSON
+          const parsedArgs = typeof toolCall.args === 'string' 
+            ? JSON.parse(toolCall.args) 
+            : toolCall.args;
+            
+          // Invoke the tool with properly formatted arguments
+          const observation = await tool.invoke(parsedArgs);
+          result.push(new ToolMessage({
+            content: observation,
+            tool_call_id: callId
+          }));
+          processedToolCallIds.add(callId);
+          processedOneToolCall = true;
+        } catch (error: any) {
+          console.error(`Error executing tool ${toolCall.name}:`, error);
+          result.push(new ToolMessage({
+            content: `Error executing tool: ${error.message}`,
+            tool_call_id: callId
+          }));
+          processedToolCallIds.add(callId);
+          processedOneToolCall = true;
+        }
         continue;
       }
       
@@ -162,6 +202,7 @@ export const createHitlEmailAssistant = async () => {
       
       try {
         // Use the interrupt function from LangGraph
+        // IMPORTANT: We're directly passing the interrupt call result without modifying it
         const humanReview = await interrupt({
           question: "Review this tool call before execution:",
           toolCall: toolCall,
@@ -174,43 +215,106 @@ export const createHitlEmailAssistant = async () => {
         if (reviewAction === "continue") {
           // Execute the tool with original args
           const tool = toolsByName[toolCall.name];
-          const args = typeof toolCall.args === 'string' ? toolCall.args : JSON.stringify(toolCall.args);
-          const observation = await tool.invoke(args);
-          const callId = toolCall.id ?? `fallback-id-${Date.now()}`;
+          // Parse the args properly
+          const parsedArgs = typeof toolCall.args === 'string' 
+            ? JSON.parse(toolCall.args) 
+            : toolCall.args;
+            
+          const observation = await tool.invoke(parsedArgs);
           result.push(new ToolMessage({
             content: observation,
             tool_call_id: callId
           }));
+          processedToolCallIds.add(callId);
+          processedOneToolCall = true;
         } 
         else if (reviewAction === "update") {
           // Execute with edited args
           const tool = toolsByName[toolCall.name];
-          const updatedArgs = reviewData;
-          const args = typeof updatedArgs === 'string' ? updatedArgs : JSON.stringify(updatedArgs);
-          const observation = await tool.invoke(args);
-          const callId = toolCall.id ?? `fallback-id-${Date.now()}`;
+          // Make sure the updated args are properly formatted
+          const updatedArgs = typeof reviewData === 'string' 
+            ? JSON.parse(reviewData) 
+            : reviewData;
+            
+          const observation = await tool.invoke(updatedArgs);
           result.push(new ToolMessage({
             content: observation,
             tool_call_id: callId
           }));
+          processedToolCallIds.add(callId);
+          processedOneToolCall = true;
         }
         else if (reviewAction === "feedback") {
           // Add feedback as a tool message
-          const callId = toolCall.id ?? `fallback-id-${Date.now()}`;
           result.push(new ToolMessage({
             content: reviewData,
             tool_call_id: callId
           }));
+          processedToolCallIds.add(callId);
+          processedOneToolCall = true;
           goto = "llm_call";
         }
-        else {
+        else if (reviewAction === "stop") {
+          // Even when stopping, we still need to respond to the tool call
+          result.push(new ToolMessage({
+            content: "User chose to stop this action.",
+            tool_call_id: callId
+          }));
+          processedToolCallIds.add(callId);
+          processedOneToolCall = true;
           goto = END;
         }
-      } catch (error) {
+        else {
+          // Handle any other action by providing a default response
+          result.push(new ToolMessage({
+            content: "Action not recognized or canceled by user.",
+            tool_call_id: callId
+          }));
+          processedToolCallIds.add(callId);
+          processedOneToolCall = true;
+          goto = END;
+        }
+      } catch (error: any) {
+        // Very important: Just rethrow any GraphInterrupt error without modifying it
+        // This ensures LangGraph can properly handle the interruption
+        if (error.name === 'GraphInterrupt' || 
+            (error.message && typeof error.message === 'string' && 
+             error.message.includes('GraphInterrupt'))) {
+          throw error;
+        }
+        
         console.error("Error with interrupt handler:", error);
-        throw error;
+        // For other errors, provide a message response
+        result.push(new ToolMessage({
+          content: `Error during tool execution: ${error.message}`,
+          tool_call_id: callId
+        }));
+        processedToolCallIds.add(callId);
+        processedOneToolCall = true;
       }
     }
+    
+    // If we've processed a tool call, return right away
+    if (processedOneToolCall) {
+      return new Command({
+        goto,
+        update: { messages: result }
+      });
+    }
+    
+    // If we reach here and haven't processed any tool calls,
+    // we need to return appropriate responses for any remaining ones
+    lastMessage.tool_calls?.forEach(toolCall => {
+      const callId = toolCall.id ?? `fallback-id-${Date.now()}`;
+      if (!processedToolCallIds.has(callId)) {
+        // We've skipped this tool call, but we still need to respond to it
+        // This is important for OpenAI's API requirement that every tool call has a response
+        result.push(new ToolMessage({
+          content: "Tool execution pending human review.",
+          tool_call_id: callId
+        }));
+      }
+    });
     
     // Return the Command with goto and update
     return new Command({
@@ -459,8 +563,11 @@ export const createHitlEmailAssistant = async () => {
   overallWorkflow.addNode("triage_interrupt_handler", triageInterruptHandler, {
     ends: ["response_agent", END]
   });
-  overallWorkflow.addNode("response_agent", responseAgent);
+  overallWorkflow.addNode("response_agent", responseAgent, {
+    ends: [END]
+  });
   overallWorkflow.addEdge(START, "triage_router");
+  overallWorkflow.addEdge("response_agent", END);
   
   // Compile the email assistant
   const hitlEmailAssistant = overallWorkflow.compile();
