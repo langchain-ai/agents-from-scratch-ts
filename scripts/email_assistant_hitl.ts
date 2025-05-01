@@ -391,7 +391,7 @@ export const createHitlEmailAssistant = async () => {
     
     if (isAIMessage(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
       // Check if any tool call is the "Done" tool
-      if (lastMessage.tool_calls.some(toolCall => toolCall.name === "Done")) {
+      if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
         return END;
       }
       return "interrupt_handler";

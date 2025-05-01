@@ -52,7 +52,6 @@ import {
   formatEmailMarkdown
 } from "../lib/utils.js";
 
-
 // Create the email assistant workflow
 export const createEmailAssistant = async () => {
   // Get tools

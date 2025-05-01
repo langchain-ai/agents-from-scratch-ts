@@ -58,12 +58,18 @@ First, install dependencies:
 ```bash
 npm install
 # or
-yarn
+yarn install
 # or
 pnpm install
 ```
 
-Then, run the development script:
+Then, create a `.env` file in the root of the project with your OpenAI API key:
+
+```
+OPENAI_API_KEY=your_api_key_here
+```
+
+Run the standard email assistant:
 
 ```bash
 npm run dev
@@ -71,6 +77,16 @@ npm run dev
 yarn dev
 # or
 pnpm dev
+```
+
+Run the human-in-the-loop (HITL) email assistant:
+
+```bash
+npm run dev:hitl
+# or
+yarn dev:hitl
+# or
+pnpm dev:hitl
 ```
 
 ## Course outline 
