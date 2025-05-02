@@ -55,6 +55,25 @@ import {
   Message 
 } from "@langchain/langgraph-sdk";
 
+/**
+ * @file Email Assistant with Human-in-the-Loop
+ * @description Modular implementation of an email assistant with human review capability
+ * 
+ * @module EmailAssistantHITL
+ * 
+ * @exports
+ * @function setupLLMAndTools - Initializes LLM and tools for the assistant
+ * @function createLLMCallNode - Creates the LLM node for decision making
+ * @function createInterruptHandlerNode - Creates the interrupt handler for human review
+ * @function createShouldContinueFunction - Provides conditional routing logic
+ * @function buildAgentGraph - Constructs the agent state graph
+ * @function createTriageRouterNode - Implements email triage logic
+ * @function createTriageInterruptHandlerNode - Handles human review for triage
+ * @function buildOverallWorkflow - Creates the complete workflow graph
+ * @function createHitlEmailAssistant - Main function to initialize the assistant
+ * @function getHitlEmailAssistant - Server-side utility function
+ */
+
 // Create message factory functions for types
 const createSystemMessage = (content: string): SystemMessage => {
   return { type: "system", content, additional_kwargs: {} } as SystemMessage;
@@ -84,11 +103,15 @@ const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: To
     Array.isArray((message as any).tool_calls);
 };
 
+// Define proper TypeScript types for our state
+type AgentStateType = EmailAgentHITLStateType;
+// Define node names as a union type for better type safety
+type AgentNodes = typeof START | typeof END | "llm_call" | "interrupt_handler" | "triage_router" | "triage_interrupt_handler" | "response_agent";
+
 /**
- * Create the Human-in-the-Loop Email Assistant
- * Mirrors the Python implementation in email_assistant_hitl.py
+ * Initialize LLM and tools
  */
-export const createHitlEmailAssistant = async () => {
+export const setupLLMAndTools = async () => {
   // Get tools
   const tools = await getTools();
   const toolsByName = await getToolsByName();
@@ -99,16 +122,14 @@ export const createHitlEmailAssistant = async () => {
   // Initialize the LLM instance for tool use
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
   
-  // Use the Zod schema imported from schemas.ts
-  const AgentState = EmailAgentHITLState;
+  return { llm, llmWithTools, tools, toolsByName };
+};
 
-  // Define proper TypeScript types for our state
-  type AgentStateType = EmailAgentHITLStateType;
-  
-  /**
-   * Main LLM call handling node
-   */
-  const llmCall = async (state: AgentStateType) => {
+/**
+ * Create the LLM decision node
+ */
+export const createLLMCallNode = (llmWithTools: any) => {
+  return async (state: AgentStateType) => {
     const { messages } = state;
     
     // Set up system prompt for the agent
@@ -132,11 +153,13 @@ export const createHitlEmailAssistant = async () => {
       messages: [result]
     };
   };
-  
-  /**
-   * Handles human review of tool calls
-   */
-  const interruptHandler = async (state: AgentStateType): Promise<Command> => {
+};
+
+/**
+ * Create the interrupt handler node for human review
+ */
+export const createInterruptHandlerNode = (toolsByName: any) => {
+  return async (state: AgentStateType): Promise<Command> => {
     // Store messages to be returned
     const result: Message[] = [];
     
@@ -321,11 +344,35 @@ export const createHitlEmailAssistant = async () => {
       update: { messages: result }
     });
   };
-  
-  /**
-   * Analyzes email content to decide if we should respond, notify, or ignore
-   */
-  const triageRouter = async (state: AgentStateType) => {
+};
+
+/**
+ * Create conditional edge function for routing
+ */
+export const createShouldContinueFunction = () => {
+  return (state: AgentStateType) => {
+    const messages = state.messages;
+    if (!messages || messages.length === 0) return END;
+    
+    const lastMessage = messages[messages.length - 1];
+    
+    if (hasToolCalls(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+      // Check if any tool call is the "Done" tool
+      if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
+        return END;
+      }
+      return "interrupt_handler";
+    }
+    
+    return END;
+  };
+};
+
+/**
+ * Create the triage router node
+ */
+export const createTriageRouterNode = (llm: any) => {
+  return async (state: AgentStateType) => {
     try {
       const { email_input } = state;
       const parseResult = parseEmail(email_input);
@@ -423,11 +470,13 @@ export const createHitlEmailAssistant = async () => {
       });
     }
   };
-  
-  /**
-   * Handles interrupts from the triage step
-   */
-  const triageInterruptHandler = async (state: AgentStateType) => {
+};
+
+/**
+ * Create the triage interrupt handler node
+ */
+export const createTriageInterruptHandlerNode = () => {
+  return async (state: AgentStateType) => {
     // Parse the email input
     const parseResult = parseEmail(state.email_input);
     
@@ -490,40 +539,19 @@ export const createHitlEmailAssistant = async () => {
       });
     }
   };
-  
-  /**
-   * Route to tool handler, or end if Done tool called
-   */
-  const shouldContinue = (state: AgentStateType) => {
-    /**
-     * Similar to the Python version's should_continue function
-     */
-    const messages = state.messages;
-    if (!messages || messages.length === 0) return END;
-    
-    const lastMessage = messages[messages.length - 1];
-    
-    if (hasToolCalls(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
-      // Check if any tool call is the "Done" tool
-      if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
-        return END;
-      }
-      return "interrupt_handler";
-    }
-    
-    return END;
-  };
-  
-  // Define node names as a union type for better type safety
-  type AgentNodes = typeof START | typeof END | "llm_call" | "interrupt_handler" | "triage_router" | "triage_interrupt_handler" | "response_agent";
+};
 
+/**
+ * Build the agent state graph
+ */
+export const buildAgentGraph = (llmCallNode: any, interruptHandlerNode: any, shouldContinue: any) => {
   // Build agent workflow with the builder pattern
-  const agentBuilder = new StateGraph<typeof AgentState, 
+  const agentBuilder = new StateGraph<typeof EmailAgentHITLState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState)
-    .addNode("llm_call", llmCall)
-    .addNode("interrupt_handler", interruptHandler);
+    AgentNodes>(EmailAgentHITLState)
+    .addNode("llm_call", llmCallNode)
+    .addNode("interrupt_handler", interruptHandlerNode);
   
   // Add edges
   agentBuilder.addEdge(START, "llm_call");
@@ -538,17 +566,22 @@ export const createHitlEmailAssistant = async () => {
   agentBuilder.addEdge("interrupt_handler", "llm_call");
   
   // Compile the agent
-  const responseAgent = agentBuilder.compile();
-  
+  return agentBuilder.compile();
+};
+
+/**
+ * Build the overall workflow graph
+ */
+export const buildOverallWorkflow = (triageRouterNode: any, triageInterruptHandlerNode: any, responseAgent: any) => {
   // Build overall workflow with the builder pattern
-  const overallWorkflow = new StateGraph<typeof AgentState, 
+  const overallWorkflow = new StateGraph<typeof EmailAgentHITLState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState)
-    .addNode("triage_router", triageRouter, {
+    AgentNodes>(EmailAgentHITLState)
+    .addNode("triage_router", triageRouterNode, {
       ends: ["triage_interrupt_handler", "response_agent", END]
     })
-    .addNode("triage_interrupt_handler", triageInterruptHandler, {
+    .addNode("triage_interrupt_handler", triageInterruptHandlerNode, {
       ends: ["response_agent", END]
     })
     .addNode("response_agent", responseAgent, {
@@ -559,7 +592,37 @@ export const createHitlEmailAssistant = async () => {
   overallWorkflow.addEdge("response_agent", END);
   
   // Compile the email assistant
-  const hitlEmailAssistant = overallWorkflow.compile();
+  return overallWorkflow.compile();
+};
+
+/**
+ * Create the Human-in-the-Loop Email Assistant
+ * Mirrors the Python implementation in email_assistant_hitl.py
+ */
+export const createHitlEmailAssistant = async () => {
+  // Setup LLMs and tools
+  const { llm, llmWithTools, tools, toolsByName } = await setupLLMAndTools();
+  
+  // Create the LLM call node
+  const llmCallNode = createLLMCallNode(llmWithTools);
+  
+  // Create the interrupt handler node
+  const interruptHandlerNode = createInterruptHandlerNode(toolsByName);
+  
+  // Create the should continue function
+  const shouldContinue = createShouldContinueFunction();
+  
+  // Build the agent graph
+  const responseAgent = buildAgentGraph(llmCallNode, interruptHandlerNode, shouldContinue);
+  
+  // Create the triage router node
+  const triageRouterNode = createTriageRouterNode(llm);
+  
+  // Create the triage interrupt handler node
+  const triageInterruptHandlerNode = createTriageInterruptHandlerNode();
+  
+  // Build the overall workflow
+  const hitlEmailAssistant = buildOverallWorkflow(triageRouterNode, triageInterruptHandlerNode, responseAgent);
   
   return hitlEmailAssistant;
 };

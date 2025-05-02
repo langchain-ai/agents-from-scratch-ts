@@ -56,6 +56,28 @@ import {
   formatForDisplay
 } from "../lib/utils.js";
 
+/**
+ * @file Email Assistant with Human-in-the-Loop and Memory
+ * @description Modular implementation of an email assistant with human review capability and memory
+ * 
+ * @module EmailAssistantHITLMemory
+ * 
+ * @exports
+ * @function setupLLMAndTools - Initializes LLM and tools for the assistant
+ * @function setupMemoryStore - Creates and initializes the memory store
+ * @function getMemory - Retrieves memory from the store with fallback
+ * @function updateMemory - Updates memory in the store based on user feedback
+ * @function createTriageRouterNode - Implements email triage logic with memory
+ * @function createTriageInterruptHandlerNode - Handles human review for triage with memory updates
+ * @function createLLMCallNode - Creates the LLM node with memory integration
+ * @function createInterruptHandlerNode - Creates the interrupt handler with memory updates
+ * @function createShouldContinueFunction - Provides conditional routing logic
+ * @function buildAgentGraph - Constructs the agent state graph
+ * @function buildOverallWorkflow - Creates the complete workflow graph with memory
+ * @function createHitlEmailAssistantWithMemory - Main function to initialize the assistant
+ * @function getHitlEmailAssistantWithMemory - Server-side utility function
+ */
+
 // Create a custom messages reducer that works with Message types
 const customMessagesReducer = (left: Message[], right: Message[]) => {
   return [...left, ...right];
@@ -96,6 +118,11 @@ interface UserPreferences {
   justification: string;
 }
 
+// Define proper TypeScript types for our state
+type AgentStateType = EmailAgentHITLStateType;
+// Define node names as a union type for better type safety
+type AgentNodes = typeof START | typeof END | "llm_call" | "interrupt_handler" | "triage_router" | "triage_interrupt_handler" | "response_agent";
+
 // Constants for memory update prompts
 const MEMORY_UPDATE_INSTRUCTIONS = `
 # Role and Objective
@@ -132,6 +159,30 @@ Remember:
 - PRESERVE all existing information not directly contradicted
 - Output the complete updated profile as a string
 `;
+
+/**
+ * Initialize LLM and tools
+ */
+export const setupLLMAndTools = async () => {
+  // Get tools
+  const tools = await getTools();
+  const toolsByName = await getToolsByName();
+  
+  // Initialize the LLM for use with router / structured output
+  const llm = await initChatModel("openai:gpt-4");
+  
+  // Initialize the LLM, enforcing tool use (of any available tools) for agent
+  const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
+  
+  return { llm, llmWithTools, tools, toolsByName };
+};
+
+/**
+ * Set up memory store
+ */
+export const setupMemoryStore = () => {
+  return new InMemoryStore();
+};
 
 /**
  * Get memory from the store or initialize with default if it doesn't exist.
@@ -246,33 +297,10 @@ async function updateMemory(
 }
 
 /**
- * Create the Human-in-the-Loop Email Assistant with Memory
- * Mirrors the Python implementation in email_assistant_hitl_memory.py
+ * Create the triage router node with memory integration
  */
-export const createHitlEmailAssistantWithMemory = async () => {
-  // Get tools
-  const tools = await getTools();
-  const toolsByName = await getToolsByName();
-  
-  // Initialize the LLM for use with router / structured output
-  const llm = await initChatModel("openai:gpt-4");
-  
-  // Initialize the LLM, enforcing tool use (of any available tools) for agent
-  const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
-  
-  // Create a memory store
-  const store = new InMemoryStore();
-  
-  // Use the Zod schema imported from schemas.ts
-  const AgentState = EmailAgentHITLState;
-
-  // Define proper TypeScript types for our state
-  type AgentStateType = EmailAgentHITLStateType;
-  
-  /**
-   * Analyze email content to decide if we should respond, notify, or ignore
-   */
-  const triageRouter = async (state: AgentStateType): Promise<Command> => {
+export const createTriageRouterNode = (llm: any, store: InMemoryStore) => {
+  return async (state: AgentStateType): Promise<Command> => {
     try {
       const { email_input } = state;
       const parseResult = parseEmail(email_input);
@@ -376,11 +404,13 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
       });
     }
   };
-  
-  /**
-   * Handles interrupts from the triage step
-   */
-  const triageInterruptHandler = async (state: AgentStateType): Promise<Command> => {
+};
+
+/**
+ * Create the triage interrupt handler node with memory integration
+ */
+export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
+  return async (state: AgentStateType): Promise<Command> => {
     // Parse the email input
     const parseResult = parseEmail(state.email_input);
     
@@ -479,11 +509,13 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
       });
     }
   };
+};
 
-  /**
-   * Main LLM call with memory integration
-   */
-  const llmCall = async (state: AgentStateType) => {
+/**
+ * Create the LLM call node with memory integration
+ */
+export const createLLMCallNode = (llmWithTools: any, store: InMemoryStore) => {
+  return async (state: AgentStateType) => {
     try {
       // Get memory preferences
       const calPreferences = await getMemory(
@@ -527,11 +559,13 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
       };
     }
   };
-  
-  /**
-   * Handles human review of tool calls with memory updates
-   */
-  const interruptHandler = async (state: AgentStateType): Promise<Command> => {
+};
+
+/**
+ * Create the interrupt handler node with memory updates
+ */
+export const createInterruptHandlerNode = (toolsByName: any, store: InMemoryStore) => {
+  return async (state: AgentStateType): Promise<Command> => {
     // Store messages to be returned
     const result: Message[] = [];
     
@@ -831,11 +865,13 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
       update: { messages: result }
     });
   };
+};
 
-  /**
-   * Route to tool handler, or end if Done tool called
-   */
-  const shouldContinue = (state: AgentStateType) => {
+/**
+ * Create conditional edge function for routing
+ */
+export const createShouldContinueFunction = () => {
+  return (state: AgentStateType) => {
     const messages = state.messages;
     if (!messages || messages.length === 0) return END;
     
@@ -851,17 +887,24 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
     
     return END;
   };
+};
 
-  // Define node names as a union type for better type safety
-  type AgentNodes = typeof START | typeof END | "llm_call" | "interrupt_handler" | "triage_router" | "triage_interrupt_handler" | "response_agent";
-
+/**
+ * Build the agent state graph with memory integration
+ */
+export const buildAgentGraph = (
+  llmCallNode: any, 
+  interruptHandlerNode: any, 
+  shouldContinue: any, 
+  store: InMemoryStore
+) => {
   // Build agent workflow with the builder pattern
-  const agentBuilder = new StateGraph<typeof AgentState, 
+  const agentBuilder = new StateGraph<typeof EmailAgentHITLState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState)
-    .addNode("llm_call", llmCall)
-    .addNode("interrupt_handler", interruptHandler);
+    AgentNodes>(EmailAgentHITLState)
+    .addNode("llm_call", llmCallNode)
+    .addNode("interrupt_handler", interruptHandlerNode);
   
   // Add edges
   agentBuilder.addEdge(START, "llm_call");
@@ -876,17 +919,27 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
   agentBuilder.addEdge("interrupt_handler", "llm_call");
   
   // Compile the agent with memory store
-  const responseAgent = agentBuilder.compile({
+  return agentBuilder.compile({
     store: store
   });
-  
+};
+
+/**
+ * Build the overall workflow graph with memory integration
+ */
+export const buildOverallWorkflow = (
+  triageRouterNode: any, 
+  triageInterruptHandlerNode: any, 
+  responseAgent: any, 
+  store: InMemoryStore
+) => {
   // Build overall workflow with the builder pattern
-  const overallWorkflow = new StateGraph<typeof AgentState, 
+  const overallWorkflow = new StateGraph<typeof EmailAgentHITLState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState)
-    .addNode("triage_router", triageRouter)
-    .addNode("triage_interrupt_handler", triageInterruptHandler)
+    AgentNodes>(EmailAgentHITLState)
+    .addNode("triage_router", triageRouterNode)
+    .addNode("triage_interrupt_handler", triageInterruptHandlerNode)
     .addNode("response_agent", responseAgent);
   
   // Add edges
@@ -941,10 +994,43 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
   overallWorkflow.addEdge("response_agent", END);
   
   // Compile the email assistant with memory store
-  const emailAssistant = overallWorkflow.compile({
+  return overallWorkflow.compile({
     store: store,
     checkpointer: new MemorySaver()
   });
+};
+
+/**
+ * Create the Human-in-the-Loop Email Assistant with Memory
+ * Mirrors the Python implementation in email_assistant_hitl_memory.py
+ */
+export const createHitlEmailAssistantWithMemory = async () => {
+  // Setup LLMs and tools
+  const { llm, llmWithTools, tools, toolsByName } = await setupLLMAndTools();
+  
+  // Create a memory store
+  const store = setupMemoryStore();
+  
+  // Create the triage router node
+  const triageRouterNode = createTriageRouterNode(llm, store);
+  
+  // Create the triage interrupt handler node
+  const triageInterruptHandlerNode = createTriageInterruptHandlerNode(store);
+  
+  // Create the LLM call node with memory
+  const llmCallNode = createLLMCallNode(llmWithTools, store);
+  
+  // Create the interrupt handler node
+  const interruptHandlerNode = createInterruptHandlerNode(toolsByName, store);
+  
+  // Create the should continue function
+  const shouldContinue = createShouldContinueFunction();
+  
+  // Build the agent graph
+  const responseAgent = buildAgentGraph(llmCallNode, interruptHandlerNode, shouldContinue, store);
+  
+  // Build the overall workflow
+  const emailAssistant = buildOverallWorkflow(triageRouterNode, triageInterruptHandlerNode, responseAgent, store);
   
   return emailAssistant;
 };
