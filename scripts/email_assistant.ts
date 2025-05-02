@@ -7,14 +7,16 @@ import {
   StateGraph, 
   START, 
   END,
-  Command,
-  Annotation
+  Command
 } from "@langchain/langgraph";
 
 import { ToolCall } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
-import { BaseMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
+
+// Zod imports
+import { z } from "zod";
+import "@langchain/langgraph/zod";
 
 // LOCAL IMPORTS
 import {
@@ -40,6 +42,8 @@ import {
   EmailData,
   StateInput,
   State,
+  BaseEmailAgentState,
+  BaseEmailAgentStateType
 } from "../lib/schemas.js";
 import {
   parseEmail,
@@ -47,14 +51,7 @@ import {
 } from "../lib/utils.js";
 
 // Message Types from LangGraph SDK
-import { HumanMessage, SystemMessage, ToolMessage, AIMessage, FunctionMessage, RemoveMessage, Message } from "@langchain/langgraph-sdk";
-
-import { AgentStateSchema } from "../lib/schemas.js";
-
-// Create a custom messages reducer that works with Message types
-const customMessagesReducer = (left: Message[], right: Message[]) => {
-  return [...left, ...right];
-};
+import { HumanMessage, SystemMessage, ToolMessage, AIMessage, Message } from "@langchain/langgraph-sdk";
 
 // Create message factory functions for types
 const createSystemMessage = (content: string): SystemMessage => {
@@ -90,18 +87,11 @@ export const createEmailAssistant = async () => {
   // Initialize the LLM for tool use
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
   
-  // Define the agent state
-  const AgentState = Annotation.Root({
-    messages: Annotation<Message[]>({
-      reducer: customMessagesReducer,
-      default: () => [],
-    }),
-    email_input: Annotation<EmailData>(),
-    classification_decision: Annotation<"ignore" | "respond" | "notify" | undefined>(),
-  });
+  // Use the Zod schema imported from schemas.ts
+  const AgentState = BaseEmailAgentState;
 
   // Define proper TypeScript types for our state
-  type AgentStateType = typeof AgentState.State;
+  type AgentStateType = BaseEmailAgentStateType;
   
   // Nodes
   const llmCall = async (state: AgentStateType) => {
@@ -154,15 +144,13 @@ export const createEmailAssistant = async () => {
   // Define node names as a union type for better type safety
   type AgentNodes = typeof START | typeof END | "llm_call" | "environment" | "triage_router" | "response_agent";
 
-  // Use the type parameter to specify allowed node names
-  const agentBuilder = new StateGraph<typeof AgentState.spec, 
+  // Build agent workflow with the builder pattern
+  const agentBuilder = new StateGraph<typeof AgentState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState);
-  
-  // Add nodes
-  agentBuilder.addNode("llm_call", llmCall);
-  agentBuilder.addNode("environment", toolNode);
+    AgentNodes>(AgentState)
+    .addNode("llm_call", llmCall)
+    .addNode("environment", toolNode);
   
   // Add edges to connect nodes
   agentBuilder.addEdge(START, "llm_call");
@@ -282,14 +270,14 @@ export const createEmailAssistant = async () => {
     }
   };
   
-  // Define the overall workflow with properly typed nodes
-  const overallWorkflow = new StateGraph<typeof AgentState.spec, 
+  // Build overall workflow with the builder pattern
+  const overallWorkflow = new StateGraph<typeof AgentState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState);
+    AgentNodes>(AgentState)
+    .addNode("triage_router", triageRouter, { ends: ["response_agent", END] })
+    .addNode("response_agent", agent);
   
-  overallWorkflow.addNode("triage_router", triageRouter, { ends: ["response_agent", END] });
-  overallWorkflow.addNode("response_agent", agent);
   overallWorkflow.addEdge(START, "triage_router");
   
   // Compile the email assistant

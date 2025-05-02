@@ -7,14 +7,15 @@ import {
   START, 
   END,
   Command,
-  Annotation,
-  interrupt,
-  messagesStateReducer,
   MemorySaver,
   InMemoryStore
 } from "@langchain/langgraph";
 import { ToolCall } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
+
+// Zod imports
+import { z } from "zod";
+import "@langchain/langgraph/zod";
 
 // Message Types from LangGraph SDK
 import { 
@@ -45,7 +46,9 @@ import {
   RouterOutput,
   EmailData,
   StateInput,
-  State
+  State,
+  EmailAgentHITLState,
+  EmailAgentHITLStateType
 } from "../lib/schemas.js";
 import {
   parseEmail,
@@ -260,18 +263,11 @@ export const createHitlEmailAssistantWithMemory = async () => {
   // Create a memory store
   const store = new InMemoryStore();
   
-  // Define the agent state
-  const AgentState = Annotation.Root({
-    messages: Annotation<Message[]>({
-      reducer: customMessagesReducer,
-      default: () => [],
-    }),
-    email_input: Annotation<EmailData>(),
-    classification_decision: Annotation<"ignore" | "respond" | "notify" | "error" | null>(),
-  });
+  // Use the Zod schema imported from schemas.ts
+  const AgentState = EmailAgentHITLState;
 
   // Define proper TypeScript types for our state
-  type AgentStateType = typeof AgentState.State;
+  type AgentStateType = EmailAgentHITLStateType;
   
   /**
    * Analyze email content to decide if we should respond, notify, or ignore
@@ -405,6 +401,8 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
       ];
       
       // Create interrupt for Agent Inbox
+      const { interrupt } = await import("@langchain/langgraph");
+      
       const humanReview = await interrupt({
         question: `Email requires attention: ${state.classification_decision || "notify"}`,
         email: emailMarkdown,
@@ -625,6 +623,8 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         };
         
         // Use the interrupt function from LangGraph
+        const { interrupt } = await import("@langchain/langgraph");
+        
         const humanReview = await interrupt({
           question: `Review this ${toolCall.name} action:`,
           toolCall,
@@ -855,15 +855,13 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
   // Define node names as a union type for better type safety
   type AgentNodes = typeof START | typeof END | "llm_call" | "interrupt_handler" | "triage_router" | "triage_interrupt_handler" | "response_agent";
 
-  // Build agent workflow
-  const agentBuilder = new StateGraph<typeof AgentState.spec, 
+  // Build agent workflow with the builder pattern
+  const agentBuilder = new StateGraph<typeof AgentState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState);
-  
-  // Add nodes
-  agentBuilder.addNode("llm_call", llmCall);
-  agentBuilder.addNode("interrupt_handler", interruptHandler);
+    AgentNodes>(AgentState)
+    .addNode("llm_call", llmCall)
+    .addNode("interrupt_handler", interruptHandler);
   
   // Add edges
   agentBuilder.addEdge(START, "llm_call");
@@ -882,15 +880,14 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
     store: store
   });
   
-  // Build overall workflow
-  const overallWorkflow = new StateGraph<typeof AgentState.spec, 
+  // Build overall workflow with the builder pattern
+  const overallWorkflow = new StateGraph<typeof AgentState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState);
-  
-  overallWorkflow.addNode("triage_router", triageRouter);
-  overallWorkflow.addNode("triage_interrupt_handler", triageInterruptHandler);
-  overallWorkflow.addNode("response_agent", responseAgent);
+    AgentNodes>(AgentState)
+    .addNode("triage_router", triageRouter)
+    .addNode("triage_interrupt_handler", triageInterruptHandler)
+    .addNode("response_agent", responseAgent);
   
   // Add edges
   overallWorkflow.addEdge(START, "triage_router");

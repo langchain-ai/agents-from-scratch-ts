@@ -3,19 +3,34 @@ import { BaseMessage } from "@langchain/core/messages";
 import "@langchain/langgraph/zod";
 import { StateGraph } from "@langchain/langgraph";
 
-
-
-export const AgentStateSchema = z.object({
+// Define the Zod schemas for the email assistant states
+export const BaseEmailAgentState = z.object({
   messages: z
-    .array(z.string())
+    .array(z.any()) // Using any to support all Message types
     .default(() => [])
     .langgraph.reducer(
-      (a, b) => a.concat(Array.isArray(b) ? b : [b]),
-      z.union([z.string(), z.array(z.string())])
+      (left, right) => [...left, ...right], 
+      z.array(z.any())
     ),
-  question: z.string(),
-  answer: z.string().min(1),
+  email_input: z.any(),
+  classification_decision: z.enum(["ignore", "respond", "notify"]).nullable().default(null)
 });
+
+export const EmailAgentHITLState = z.object({
+  messages: z
+    .array(z.any()) // Using any to support all Message types
+    .default(() => [])
+    .langgraph.reducer(
+      (left, right) => [...left, ...right], 
+      z.array(z.any())
+    ),
+  email_input: z.any(),
+  classification_decision: z.enum(["ignore", "respond", "notify", "error"]).nullable().default(null)
+});
+
+// Export the inferred types from the Zod schemas
+export type BaseEmailAgentStateType = z.infer<typeof BaseEmailAgentState>;
+export type EmailAgentHITLStateType = z.infer<typeof EmailAgentHITLState>;
 
 
 
