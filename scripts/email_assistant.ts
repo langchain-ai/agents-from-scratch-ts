@@ -53,6 +53,23 @@ import {
 // Message Types from LangGraph SDK
 import { HumanMessage, SystemMessage, ToolMessage, AIMessage, Message } from "@langchain/langgraph-sdk";
 
+/**
+ * @file Email Assistant
+ * @description Modular implementation of an email assistant that can triage and respond to emails
+ * 
+ * @module EmailAssistant
+ * 
+ * @exports
+ * @function setupLLMAndTools - Initializes LLM and tools for the assistant
+ * @function createLLMCallNode - Creates the LLM node for decision making
+ * @function createShouldContinueFunction - Provides conditional routing logic
+ * @function buildAgentGraph - Constructs the agent state graph
+ * @function createTriageRouterNode - Implements email triage logic
+ * @function buildOverallWorkflow - Creates the complete workflow graph
+ * @function createEmailAssistant - Main function to initialize the assistant
+ * @function getEmailAssistant - Server-side utility function
+ */
+
 // Create message factory functions for types
 const createSystemMessage = (content: string): SystemMessage => {
   return { type: "system", content, additional_kwargs: {} } as SystemMessage;
@@ -73,7 +90,15 @@ const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: To
     Array.isArray((message as any).tool_calls);
 };
 
-export const createEmailAssistant = async () => {
+// Define proper TypeScript types for our state
+type AgentStateType = BaseEmailAgentStateType;
+// Define node names as a union type for better type safety
+type AgentNodes = typeof START | typeof END | "llm_call" | "environment" | "triage_router" | "response_agent";
+
+/**
+ * Initialize LLM and tools
+ */
+export const setupLLMAndTools = async () => {
   // Get tools
   const tools = await getTools();
   const toolsByName = await getToolsByName(tools);
@@ -87,14 +112,14 @@ export const createEmailAssistant = async () => {
   // Initialize the LLM for tool use
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
   
-  // Use the Zod schema imported from schemas.ts
-  const AgentState = BaseEmailAgentState;
+  return { llm, llmWithTools, tools, toolsByName };
+};
 
-  // Define proper TypeScript types for our state
-  type AgentStateType = BaseEmailAgentStateType;
-  
-  // Nodes
-  const llmCall = async (state: AgentStateType) => {
+/**
+ * Create the LLM decision node
+ */
+export const createLLMCallNode = (llmWithTools: any) => {
+  return async (state: AgentStateType) => {
     /**
      * LLM decides whether to call a tool or not
      * This is the main decision-making node that generates responses or tool calls
@@ -115,12 +140,13 @@ export const createEmailAssistant = async () => {
       messages: [response]
     };
   };
-  
-  // Create the tool node using LangGraph's ToolNode
-  const toolNode = new ToolNode(tools);
-  
-  // Conditional edge function
-  const shouldContinue = (state: AgentStateType) => {
+};
+
+/**
+ * Create the conditional edge function
+ */
+export const createShouldContinueFunction = () => {
+  return (state: AgentStateType) => {
     /**
      * Route to environment for tool execution, or end if Done tool called
      * Similar to the Python version's should_continue function
@@ -140,16 +166,18 @@ export const createEmailAssistant = async () => {
     
     return END;
   };
-  
-  // Define node names as a union type for better type safety
-  type AgentNodes = typeof START | typeof END | "llm_call" | "environment" | "triage_router" | "response_agent";
+};
 
+/**
+ * Build the agent state graph
+ */
+export const buildAgentGraph = (llmCallNode: any, toolNode: ToolNode, shouldContinue: any) => {
   // Build agent workflow with the builder pattern
-  const agentBuilder = new StateGraph<typeof AgentState, 
+  const agentBuilder = new StateGraph<typeof BaseEmailAgentState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState)
-    .addNode("llm_call", llmCall)
+    AgentNodes>(BaseEmailAgentState)
+    .addNode("llm_call", llmCallNode)
     .addNode("environment", toolNode);
   
   // Add edges to connect nodes
@@ -165,10 +193,14 @@ export const createEmailAssistant = async () => {
   agentBuilder.addEdge("environment", "llm_call");
   
   // Compile the agent
-  const agent = agentBuilder.compile();
-  
-  // Triage router function
-  const triageRouter = async (state: AgentStateType) => {
+  return agentBuilder.compile();
+};
+
+/**
+ * Create the triage router node
+ */
+export const createTriageRouterNode = (llm: any) => {
+  return async (state: AgentStateType) => {
     /**
      * Analyze email content to decide if we should respond, notify, or ignore.
      * 
@@ -269,19 +301,47 @@ export const createEmailAssistant = async () => {
       });
     }
   };
-  
+};
+
+/**
+ * Build the overall workflow graph
+ */
+export const buildOverallWorkflow = (triageRouterNode: any, agent: any) => {
   // Build overall workflow with the builder pattern
-  const overallWorkflow = new StateGraph<typeof AgentState, 
+  const overallWorkflow = new StateGraph<typeof BaseEmailAgentState, 
     AgentStateType, 
     Partial<AgentStateType>,
-    AgentNodes>(AgentState)
-    .addNode("triage_router", triageRouter, { ends: ["response_agent", END] })
+    AgentNodes>(BaseEmailAgentState)
+    .addNode("triage_router", triageRouterNode, { ends: ["response_agent", END] })
     .addNode("response_agent", agent);
   
   overallWorkflow.addEdge(START, "triage_router");
   
   // Compile the email assistant
-  const emailAssistant = overallWorkflow.compile();
+  return overallWorkflow.compile();
+};
+
+export const createEmailAssistant = async () => {
+  // Setup LLMs and tools
+  const { llm, llmWithTools, tools } = await setupLLMAndTools();
+  
+  // Create the LLM call node
+  const llmCallNode = createLLMCallNode(llmWithTools);
+  
+  // Create the tool node
+  const toolNode = new ToolNode(tools);
+  
+  // Create the conditional edge function
+  const shouldContinue = createShouldContinueFunction();
+  
+  // Build the agent graph
+  const agent = buildAgentGraph(llmCallNode, toolNode, shouldContinue);
+  
+  // Create the triage router node
+  const triageRouterNode = createTriageRouterNode(llm);
+  
+  // Build the overall workflow
+  const emailAssistant = buildOverallWorkflow(triageRouterNode, agent);
   
   return emailAssistant;
 };
