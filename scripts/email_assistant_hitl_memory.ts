@@ -13,15 +13,17 @@ import {
   MemorySaver,
   InMemoryStore
 } from "@langchain/langgraph";
-import { 
-  BaseMessage, 
-  HumanMessage, 
-  AIMessage, 
-  SystemMessage,
-  isAIMessage
-} from "@langchain/core/messages";
-import { ToolCall, ToolMessage } from "@langchain/core/messages/tool";
+import { ToolCall } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
+
+// Message Types from LangGraph SDK
+import { 
+  HumanMessage, 
+  SystemMessage, 
+  ToolMessage, 
+  AIMessage, 
+  Message 
+} from "@langchain/langgraph-sdk";
 
 // LOCAL IMPORTS
 import {
@@ -50,6 +52,40 @@ import {
   formatEmailMarkdown,
   formatForDisplay
 } from "../lib/utils.js";
+
+// Create a custom messages reducer that works with Message types
+const customMessagesReducer = (left: Message[], right: Message[]) => {
+  return [...left, ...right];
+};
+
+// Create message factory functions for types
+const createSystemMessage = (content: string): SystemMessage => {
+  return { type: "system", content, additional_kwargs: {} } as SystemMessage;
+};
+
+const createHumanMessage = (content: string): HumanMessage => {
+  return { type: "human", content, additional_kwargs: {} } as HumanMessage;
+};
+
+const createToolMessage = (content: string, tool_call_id: string): ToolMessage => {
+  return { type: "tool", content, tool_call_id, additional_kwargs: {} } as ToolMessage;
+};
+
+const createAIMessage = (content: string, tool_calls?: ToolCall[]): AIMessage => {
+  return { 
+    type: "ai", 
+    content, 
+    tool_calls: tool_calls || [],
+    additional_kwargs: {} 
+  } as AIMessage;
+};
+
+// Helper for type checking
+const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
+  return message.type === "ai" && 
+    (message as any).tool_calls !== undefined && 
+    Array.isArray((message as any).tool_calls);
+};
 
 // Define UserPreferences interface for memory updates
 interface UserPreferences {
@@ -137,17 +173,17 @@ async function getMemory(
 async function updateMemory(
   store: InMemoryStore,
   namespace: string[],
-  messages: BaseMessage[]
+  messages: Message[]
 ): Promise<void> {
   try {
     // Get the existing memory
     const userPreferences = await store.get(namespace, "user_preferences");
     const currentProfile = userPreferences ? userPreferences.value as unknown as string : "";
     
-    // Convert BaseMessage[] to format expected by the LLM
+    // Convert Message[] to format expected by the LLM
     const formattedMessages = messages.map(msg => ({
-      role: msg instanceof HumanMessage ? "user" : 
-            msg instanceof AIMessage ? "assistant" : 
+      role: msg.type === "human" ? "user" : 
+            msg.type === "ai" ? "assistant" : 
             "system",
       content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)
     }));
@@ -166,29 +202,29 @@ async function updateMemory(
     });
     
     // Create system message with memory update instructions
-    const systemMsg = new SystemMessage({
-      content: MEMORY_UPDATE_INSTRUCTIONS.replace(
+    const systemMsg = createSystemMessage(
+      MEMORY_UPDATE_INSTRUCTIONS.replace(
         "{current_profile}", 
         currentProfile
       ).replace(
         "{namespace}",
         namespace.join("/")
       )
-    });
+    );
     
     // Create user message instructing to update memory
-    const userMsg = new HumanMessage({
-      content: "Think carefully and update the memory profile based upon these user messages:"
-    });
+    const userMsg = createHumanMessage(
+      "Think carefully and update the memory profile based upon these user messages:"
+    );
     
-    // Convert the formatted messages to BaseMessage objects
+    // Convert the formatted messages to Message objects
     const messagesForLLM = formattedMessages.map(msg => {
       if (msg.role === "user") {
-        return new HumanMessage({ content: msg.content });
+        return createHumanMessage(msg.content);
       } else if (msg.role === "assistant") {
-        return new AIMessage({ content: msg.content });
+        return createAIMessage(msg.content);
       } else {
-        return new SystemMessage({ content: msg.content });
+        return createSystemMessage(msg.content);
       }
     });
     
@@ -226,8 +262,8 @@ export const createHitlEmailAssistantWithMemory = async () => {
   
   // Define the agent state
   const AgentState = Annotation.Root({
-    messages: Annotation<BaseMessage[]>({
-      reducer: messagesStateReducer,
+    messages: Annotation<Message[]>({
+      reducer: customMessagesReducer,
       default: () => [],
     }),
     email_input: Annotation<EmailData>(),
@@ -284,8 +320,8 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
       
       // Use the regular LLM with a simplified prompt
       const response = await llm.invoke([
-        new SystemMessage({ content: simplifiedSystemPrompt }),
-        new HumanMessage({ content: userPrompt })
+        createSystemMessage(simplifiedSystemPrompt),
+        createHumanMessage(userPrompt)
       ]);
       
       // Extract the classification from the simple response
@@ -312,9 +348,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         console.log("📧 Classification: RESPOND - This email requires a response");
         goto = "response_agent";
         update.messages = [
-          new HumanMessage({
-            content: `Respond to the email: ${emailMarkdown}`
-          })
+          createHumanMessage(`Respond to the email: ${emailMarkdown}`)
         ];
       } else if (classification === "notify") {
         console.log("🔔 Classification: NOTIFY - This email contains important information");
@@ -340,9 +374,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         update: {
           classification_decision: "error",
           messages: [
-            new SystemMessage({ 
-              content: `Error in triage router: ${error.message}`
-            })
+            createSystemMessage(`Error in triage router: ${error.message}`)
           ]
         }
       });
@@ -369,9 +401,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
     try {
       // Create messages
       const messages = [
-        new HumanMessage({
-          content: `Email to notify user about: ${emailMarkdown}`
-        })
+        createHumanMessage(`Email to notify user about: ${emailMarkdown}`)
       ];
       
       // Create interrupt for Agent Inbox
@@ -398,17 +428,13 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         // User wants to respond to the email
         if (reviewData) {
           returnMessages.push(
-            new HumanMessage({
-              content: `User wants to reply to the email. Use this feedback to respond: ${reviewData}`
-            })
+            createHumanMessage(`User wants to reply to the email. Use this feedback to respond: ${reviewData}`)
           );
         }
         
         // Update memory with feedback
         const memoryUpdateMessages = [
-          new HumanMessage({
-            content: "The user decided to respond to the email, so update the triage preferences to capture this."
-          }),
+          createHumanMessage("The user decided to respond to the email, so update the triage preferences to capture this."),
           ...returnMessages
         ];
         
@@ -422,9 +448,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
       } else {
         // User ignored the email or other action
         const memoryUpdateMessages = [
-          new HumanMessage({
-            content: "The user decided to ignore the email even though it was classified as notify. Update triage preferences to capture this."
-          }),
+          createHumanMessage("The user decided to ignore the email even though it was classified as notify. Update triage preferences to capture this."),
           ...returnMessages
         ];
         
@@ -451,9 +475,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         goto: END,
         update: {
           messages: [
-            new SystemMessage({ 
-              content: `Error in triage interrupt: ${error.message}`
-            })
+            createSystemMessage(`Error in triage interrupt: ${error.message}`)
           ]
         }
       });
@@ -487,7 +509,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         
       // Create full message history for the agent
       const allMessages = [
-        new SystemMessage({ content: systemPrompt }),
+        createSystemMessage(systemPrompt),
         ...state.messages
       ];
       
@@ -502,9 +524,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
       console.error("Error in LLM call:", error);
       return {
         messages: [
-          new AIMessage({
-            content: `Error calling model: ${error.message}`
-          })
+          createAIMessage(`Error calling model: ${error.message}`)
         ]
       };
     }
@@ -515,7 +535,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
    */
   const interruptHandler = async (state: AgentStateType): Promise<Command> => {
     // Store messages to be returned
-    const result: BaseMessage[] = [];
+    const result: Message[] = [];
     
     // Default goto is llm_call
     let goto: typeof END | "llm_call" = "llm_call";
@@ -524,7 +544,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
     const lastMessage = state.messages[state.messages.length - 1];
     
     // Exit early if there are no tool calls
-    if (!isAIMessage(lastMessage) || !lastMessage.tool_calls || lastMessage.tool_calls.length === 0) {
+    if (!hasToolCalls(lastMessage) || !lastMessage.tool_calls || lastMessage.tool_calls.length === 0) {
       return new Command({
         goto,
         update: { messages: result }
@@ -555,10 +575,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         const tool = toolsByName[toolCall.name];
         if (!tool) {
           console.error(`Tool ${toolCall.name} not found`);
-          result.push(new ToolMessage({
-            content: `Error: Tool ${toolCall.name} not found`,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(`Error: Tool ${toolCall.name} not found`, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           continue;
@@ -572,18 +589,12 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
             
           // Invoke the tool with properly formatted arguments
           const observation = await tool.invoke(parsedArgs);
-          result.push(new ToolMessage({
-            content: observation,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(observation, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         } catch (error: any) {
           console.error(`Error executing tool ${toolCall.name}:`, error);
-          result.push(new ToolMessage({
-            content: `Error executing tool: ${error.message}`,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(`Error executing tool: ${error.message}`, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         }
@@ -633,10 +644,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
             : toolCall.args;
             
           const observation = await tool.invoke(parsedArgs);
-          result.push(new ToolMessage({
-            content: observation,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(observation, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         } 
@@ -651,7 +659,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
           const initialToolCall = `${toolCall.name}: ${JSON.stringify(toolCall.args)}`;
           
           // Update the AI message's tool call with edited content (reference to the message in the state)
-          if (isAIMessage(lastMessage)) {
+          if (hasToolCalls(lastMessage)) {
             // Replace the original tool call with the edited one
             lastMessage.tool_calls = lastMessage.tool_calls?.map(tc => {
               if (tc.id === callId) {
@@ -668,10 +676,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
           const observation = await tool.invoke(editedArgs);
           
           // Add the tool response
-          result.push(new ToolMessage({
-            content: observation,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(observation, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           
@@ -681,9 +686,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
               store,
               ["email_assistant", "response_preferences"],
               [
-                new HumanMessage({
-                  content: `User edited the email response. Here is the initial email generated by the assistant: ${initialToolCall}. Here is the edited email: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
-                })
+                createHumanMessage(`User edited the email response. Here is the initial email generated by the assistant: ${initialToolCall}. Here is the edited email: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
               ]
             );
           } else if (toolCall.name === "schedule_meeting") {
@@ -691,9 +694,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
               store,
               ["email_assistant", "cal_preferences"],
               [
-                new HumanMessage({
-                  content: `User edited the calendar invitation. Here is the initial calendar invitation generated by the assistant: ${initialToolCall}. Here is the edited calendar invitation: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
-                })
+                createHumanMessage(`User edited the calendar invitation. Here is the initial calendar invitation generated by the assistant: ${initialToolCall}. Here is the edited calendar invitation: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
               ]
             );
           }
@@ -701,10 +702,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         else if (reviewAction === "ignore") {
           if (toolCall.name === "write_email") {
             // Don't execute the tool, and tell the agent how to proceed
-            result.push(new ToolMessage({
-              content: "User ignored this email draft. Ignore this email and end the workflow.",
-              tool_call_id: callId
-            }));
+            result.push(createToolMessage("User ignored this email draft. Ignore this email and end the workflow.", callId));
             processedToolCallIds.add(callId);
             processedOneToolCall = true;
             
@@ -718,17 +716,12 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
               [
                 ...state.messages,
                 ...result,
-                new HumanMessage({
-                  content: `The user ignored the email draft. That means they did not want to respond to the email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
-                })
+                createHumanMessage(`The user ignored the email draft. That means they did not want to respond to the email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
               ]
             );
           } else if (toolCall.name === "schedule_meeting") {
             // Don't execute the tool, and tell the agent how to proceed
-            result.push(new ToolMessage({
-              content: "User ignored this calendar meeting draft. Ignore this email and end the workflow.",
-              tool_call_id: callId
-            }));
+            result.push(createToolMessage("User ignored this calendar meeting draft. Ignore this email and end the workflow.", callId));
             processedToolCallIds.add(callId);
             processedOneToolCall = true;
             
@@ -742,17 +735,12 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
               [
                 ...state.messages,
                 ...result,
-                new HumanMessage({
-                  content: `The user ignored the calendar meeting draft. That means they did not want to schedule a meeting for this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
-                })
+                createHumanMessage(`The user ignored the calendar meeting draft. That means they did not want to schedule a meeting for this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
               ]
             );
           } else if (toolCall.name === "Question") {
             // Don't execute the tool, and tell the agent how to proceed
-            result.push(new ToolMessage({
-              content: "User ignored this question. Ignore this email and end the workflow.",
-              tool_call_id: callId
-            }));
+            result.push(createToolMessage("User ignored this question. Ignore this email and end the workflow.", callId));
             processedToolCallIds.add(callId);
             processedOneToolCall = true;
             
@@ -766,9 +754,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
               [
                 ...state.messages,
                 ...result,
-                new HumanMessage({
-                  content: `The user ignored the Question. That means they did not want to answer the question or deal with this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
-                })
+                createHumanMessage(`The user ignored the Question. That means they did not want to answer the question or deal with this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
               ]
             );
           }
@@ -779,10 +765,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
           
           if (toolCall.name === "write_email") {
             // Don't execute the tool, and add a message with the user feedback to incorporate into the email
-            result.push(new ToolMessage({
-              content: `User gave feedback, which can we incorporate into the email. Feedback: ${userFeedback}`,
-              tool_call_id: callId
-            }));
+            result.push(createToolMessage(`User gave feedback, which can we incorporate into the email. Feedback: ${userFeedback}`, callId));
             processedToolCallIds.add(callId);
             processedOneToolCall = true;
             
@@ -793,17 +776,12 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
               [
                 ...state.messages,
                 ...result,
-                new HumanMessage({
-                  content: `User gave feedback, which we can use to update the response preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
-                })
+                createHumanMessage(`User gave feedback, which we can use to update the response preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
               ]
             );
           } else if (toolCall.name === "schedule_meeting") {
             // Don't execute the tool, and add a message with the user feedback to incorporate into the meeting request
-            result.push(new ToolMessage({
-              content: `User gave feedback, which can we incorporate into the meeting request. Feedback: ${userFeedback}`,
-              tool_call_id: callId
-            }));
+            result.push(createToolMessage(`User gave feedback, which can we incorporate into the meeting request. Feedback: ${userFeedback}`, callId));
             processedToolCallIds.add(callId);
             processedOneToolCall = true;
             
@@ -814,27 +792,19 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
               [
                 ...state.messages,
                 ...result,
-                new HumanMessage({
-                  content: `User gave feedback, which we can use to update the calendar preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
-                })
+                createHumanMessage(`User gave feedback, which we can use to update the calendar preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
               ]
             );
           } else if (toolCall.name === "Question") {
             // Don't execute the tool, add user answer
-            result.push(new ToolMessage({
-              content: `User answered the question, which can we can use for any follow up actions. Feedback: ${userFeedback}`,
-              tool_call_id: callId
-            }));
+            result.push(createToolMessage(`User answered the question, which can we can use for any follow up actions. Feedback: ${userFeedback}`, callId));
             processedToolCallIds.add(callId);
             processedOneToolCall = true;
           }
         }
         else {
           // Handle any other action with a default response
-          result.push(new ToolMessage({
-            content: "Action not recognized or canceled by user.",
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage("Action not recognized or canceled by user.", callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         }
@@ -849,10 +819,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         
         console.error("Error with interrupt handler:", error);
         // For other errors, provide a message response
-        result.push(new ToolMessage({
-          content: `Error during tool execution: ${error.message}`,
-          tool_call_id: callId
-        }));
+        result.push(createToolMessage(`Error during tool execution: ${error.message}`, callId));
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
       }
@@ -874,7 +841,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
     
     const lastMessage = messages[messages.length - 1];
     
-    if (isAIMessage(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+    if (hasToolCalls(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
       // Check if any tool call is the "Done" tool
       if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
         return END;

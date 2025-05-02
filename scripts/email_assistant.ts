@@ -8,18 +8,12 @@ import {
   START, 
   END,
   Command,
-  Annotation,
-  messagesStateReducer
+  Annotation
 } from "@langchain/langgraph";
-import { 
-  BaseMessage, 
-  HumanMessage, 
-  AIMessage, 
-  SystemMessage,
-  isAIMessage
-} from "@langchain/core/messages";
-import { ToolCall, ToolMessage } from "@langchain/core/messages/tool";
+
+import { ToolCall } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
+import { BaseMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 // LOCAL IMPORTS
@@ -52,7 +46,36 @@ import {
   formatEmailMarkdown
 } from "../lib/utils.js";
 
-// Create the email assistant workflow
+// Message Types from LangGraph SDK
+import { HumanMessage, SystemMessage, ToolMessage, AIMessage, FunctionMessage, RemoveMessage, Message } from "@langchain/langgraph-sdk";
+
+import { AgentStateSchema } from "../lib/schemas.js";
+
+// Create a custom messages reducer that works with Message types
+const customMessagesReducer = (left: Message[], right: Message[]) => {
+  return [...left, ...right];
+};
+
+// Create message factory functions for types
+const createSystemMessage = (content: string): SystemMessage => {
+  return { type: "system", content, additional_kwargs: {} } as SystemMessage;
+};
+
+const createHumanMessage = (content: string): HumanMessage => {
+  return { type: "human", content, additional_kwargs: {} } as HumanMessage;
+};
+
+const createToolMessage = (content: string, tool_call_id: string): ToolMessage => {
+  return { type: "tool", content, tool_call_id, additional_kwargs: {} } as ToolMessage;
+};
+
+// Helper for type checking
+const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
+  return message.type === "ai" && 
+    (message as any).tool_calls !== undefined && 
+    Array.isArray((message as any).tool_calls);
+};
+
 export const createEmailAssistant = async () => {
   // Get tools
   const tools = await getTools();
@@ -69,8 +92,8 @@ export const createEmailAssistant = async () => {
   
   // Define the agent state
   const AgentState = Annotation.Root({
-    messages: Annotation<BaseMessage[]>({
-      reducer: messagesStateReducer,
+    messages: Annotation<Message[]>({
+      reducer: customMessagesReducer,
       default: () => [],
     }),
     email_input: Annotation<EmailData>(),
@@ -94,7 +117,7 @@ export const createEmailAssistant = async () => {
       .replace("{cal_preferences}", defaultCalPreferences);
     
     const response = await llmWithTools.invoke([
-      new SystemMessage({ content: systemPromptContent }),
+      createSystemMessage(systemPromptContent),
       ...messages
     ]);
     
@@ -117,7 +140,7 @@ export const createEmailAssistant = async () => {
     
     const lastMessage = messages[messages.length - 1];
     
-    if (isAIMessage(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+    if (hasToolCalls(lastMessage) && lastMessage.tool_calls.length > 0) {
       // Check if any tool call is the "Done" tool
       if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
         return END;
@@ -199,8 +222,8 @@ export const createEmailAssistant = async () => {
       
       // Use the regular LLM instead of withStructuredOutput
       const response = await llm.invoke([
-        new SystemMessage({ content: jsonSystemPrompt }),
-        new HumanMessage({ content: userPrompt })
+        createSystemMessage(jsonSystemPrompt),
+        createHumanMessage(userPrompt)
       ]);
       
       // Parse the JSON response manually
@@ -230,9 +253,7 @@ export const createEmailAssistant = async () => {
         goto = "response_agent";
         
         update.messages = [
-          new HumanMessage({ 
-            content: `Respond to the email: ${emailMarkdown}`
-          })
+          createHumanMessage(`Respond to the email: ${emailMarkdown}`)
         ];
       } else if (classification === "ignore") {
         console.log("🚫 Classification: IGNORE - This email can be safely ignored");
@@ -254,9 +275,7 @@ export const createEmailAssistant = async () => {
         update: {
           classification_decision: "ignore",
           messages: [
-            new SystemMessage({ 
-              content: `Error processing email: ${error.message}`
-            })
+            createSystemMessage(`Error processing email: ${error.message}`)
           ]
         }
       });

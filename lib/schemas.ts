@@ -1,5 +1,23 @@
 import { z } from "zod";
 import { BaseMessage } from "@langchain/core/messages";
+import "@langchain/langgraph/zod";
+import { StateGraph } from "@langchain/langgraph";
+
+
+
+export const AgentStateSchema = z.object({
+  messages: z
+    .array(z.string())
+    .default(() => [])
+    .langgraph.reducer(
+      (a, b) => a.concat(Array.isArray(b) ? b : [b]),
+      z.union([z.string(), z.array(z.string())])
+    ),
+  question: z.string(),
+  answer: z.string().min(1),
+});
+
+
 
 /**
  * Router schema for analyzing unread emails and routing based on content

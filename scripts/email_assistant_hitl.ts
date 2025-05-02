@@ -8,17 +8,9 @@ import {
   END,
   Command,
   Annotation,
-  interrupt,
-  messagesStateReducer
+  interrupt
 } from "@langchain/langgraph";
-import { 
-  BaseMessage, 
-  HumanMessage, 
-  AIMessage, 
-  SystemMessage,
-  isAIMessage
-} from "@langchain/core/messages";
-import { ToolCall, ToolMessage } from "@langchain/core/messages/tool";
+import { ToolCall } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
@@ -50,6 +42,49 @@ import {
   formatForDisplay
 } from "../lib/utils.js";
 
+// Message Types from LangGraph SDK
+import { 
+  HumanMessage, 
+  SystemMessage, 
+  ToolMessage, 
+  AIMessage, 
+  Message 
+} from "@langchain/langgraph-sdk";
+
+// Create a custom messages reducer that works with Message types
+const customMessagesReducer = (left: Message[], right: Message[]) => {
+  return [...left, ...right];
+};
+
+// Create message factory functions for types
+const createSystemMessage = (content: string): SystemMessage => {
+  return { type: "system", content, additional_kwargs: {} } as SystemMessage;
+};
+
+const createHumanMessage = (content: string): HumanMessage => {
+  return { type: "human", content, additional_kwargs: {} } as HumanMessage;
+};
+
+const createToolMessage = (content: string, tool_call_id: string): ToolMessage => {
+  return { type: "tool", content, tool_call_id, additional_kwargs: {} } as ToolMessage;
+};
+
+const createAIMessage = (content: string, tool_calls?: ToolCall[]): AIMessage => {
+  return { 
+    type: "ai", 
+    content, 
+    tool_calls: tool_calls || [],
+    additional_kwargs: {} 
+  } as AIMessage;
+};
+
+// Helper for type checking
+const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
+  return message.type === "ai" && 
+    (message as any).tool_calls !== undefined && 
+    Array.isArray((message as any).tool_calls);
+};
+
 /**
  * Create the Human-in-the-Loop Email Assistant
  * Mirrors the Python implementation in email_assistant_hitl.py
@@ -67,8 +102,8 @@ export const createHitlEmailAssistant = async () => {
   
   // Define the agent state
   const AgentState = Annotation.Root({
-    messages: Annotation<BaseMessage[]>({
-      reducer: messagesStateReducer,
+    messages: Annotation<Message[]>({
+      reducer: customMessagesReducer,
       default: () => [],
     }),
     email_input: Annotation<EmailData>(),
@@ -93,7 +128,7 @@ export const createHitlEmailAssistant = async () => {
       
     // Create full message history for the agent
     const allMessages = [
-      new SystemMessage({ content: systemPrompt }),
+      createSystemMessage(systemPrompt),
       ...messages
     ];
     
@@ -111,7 +146,7 @@ export const createHitlEmailAssistant = async () => {
    */
   const interruptHandler = async (state: AgentStateType): Promise<Command> => {
     // Store messages to be returned
-    const result: BaseMessage[] = [];
+    const result: Message[] = [];
     
     // Default goto is llm_call
     let goto: typeof END | "llm_call" = "llm_call";
@@ -120,7 +155,7 @@ export const createHitlEmailAssistant = async () => {
     const lastMessage = state.messages[state.messages.length - 1];
     
     // Exit early if there are no tool calls
-    if (!isAIMessage(lastMessage) || !lastMessage.tool_calls || lastMessage.tool_calls.length === 0) {
+    if (!hasToolCalls(lastMessage) || !lastMessage.tool_calls || lastMessage.tool_calls.length === 0) {
       return new Command({
         goto,
         update: { messages: result }
@@ -151,10 +186,7 @@ export const createHitlEmailAssistant = async () => {
         const tool = toolsByName[toolCall.name];
         if (!tool) {
           console.error(`Tool ${toolCall.name} not found`);
-          result.push(new ToolMessage({
-            content: `Error: Tool ${toolCall.name} not found`,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(`Error: Tool ${toolCall.name} not found`, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           continue;
@@ -168,18 +200,12 @@ export const createHitlEmailAssistant = async () => {
             
           // Invoke the tool with properly formatted arguments
           const observation = await tool.invoke(parsedArgs);
-          result.push(new ToolMessage({
-            content: observation,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(observation, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         } catch (error: any) {
           console.error(`Error executing tool ${toolCall.name}:`, error);
-          result.push(new ToolMessage({
-            content: `Error executing tool: ${error.message}`,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(`Error executing tool: ${error.message}`, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         }
@@ -221,10 +247,7 @@ export const createHitlEmailAssistant = async () => {
             : toolCall.args;
             
           const observation = await tool.invoke(parsedArgs);
-          result.push(new ToolMessage({
-            content: observation,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(observation, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         } 
@@ -237,39 +260,27 @@ export const createHitlEmailAssistant = async () => {
             : reviewData;
             
           const observation = await tool.invoke(updatedArgs);
-          result.push(new ToolMessage({
-            content: observation,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(observation, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         }
         else if (reviewAction === "feedback") {
           // Add feedback as a tool message
-          result.push(new ToolMessage({
-            content: reviewData,
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage(reviewData, callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           goto = "llm_call";
         }
         else if (reviewAction === "stop") {
           // Even when stopping, we still need to respond to the tool call
-          result.push(new ToolMessage({
-            content: "User chose to stop this action.",
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage("User chose to stop this action.", callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           goto = END;
         }
         else {
           // Handle any other action by providing a default response
-          result.push(new ToolMessage({
-            content: "Action not recognized or canceled by user.",
-            tool_call_id: callId
-          }));
+          result.push(createToolMessage("Action not recognized or canceled by user.", callId));
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           goto = END;
@@ -285,10 +296,7 @@ export const createHitlEmailAssistant = async () => {
         
         console.error("Error with interrupt handler:", error);
         // For other errors, provide a message response
-        result.push(new ToolMessage({
-          content: `Error during tool execution: ${error.message}`,
-          tool_call_id: callId
-        }));
+        result.push(createToolMessage(`Error during tool execution: ${error.message}`, callId));
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
       }
@@ -309,10 +317,7 @@ export const createHitlEmailAssistant = async () => {
       if (!processedToolCallIds.has(callId)) {
         // We've skipped this tool call, but we still need to respond to it
         // This is important for OpenAI's API requirement that every tool call has a response
-        result.push(new ToolMessage({
-          content: "Tool execution pending human review.",
-          tool_call_id: callId
-        }));
+        result.push(createToolMessage("Tool execution pending human review.", callId));
       }
     });
     
@@ -360,8 +365,8 @@ export const createHitlEmailAssistant = async () => {
       
       // Use the regular LLM instead of withStructuredOutput
       const response = await llm.invoke([
-        new SystemMessage({ content: jsonSystemPrompt }),
-        new HumanMessage({ content: userPrompt })
+        createSystemMessage(jsonSystemPrompt),
+        createHumanMessage(userPrompt)
       ]);
       
       // Parse the JSON response manually
@@ -389,9 +394,7 @@ export const createHitlEmailAssistant = async () => {
       
       // Create message
       update.messages = [
-        new HumanMessage({
-          content: `Email to review: ${emailMarkdown}`
-        })
+        createHumanMessage(`Email to review: ${emailMarkdown}`)
       ];
       
       if (classification === "respond") {
@@ -420,9 +423,7 @@ export const createHitlEmailAssistant = async () => {
         update: {
           classification_decision: "error",
           messages: [
-            new SystemMessage({ 
-              content: `Error in triage router: ${error.message}`
-            })
+            createSystemMessage(`Error in triage router: ${error.message}`)
           ]
         }
       });
@@ -455,9 +456,7 @@ export const createHitlEmailAssistant = async () => {
       
       let goto: "response_agent" | typeof END = END;
       const messages = [
-        new HumanMessage({
-          content: `Email to review: ${emailMarkdown}`
-        })
+        createHumanMessage(`Email to review: ${emailMarkdown}`)
       ];
       
       // Handle different response types
@@ -469,9 +468,7 @@ export const createHitlEmailAssistant = async () => {
         goto = "response_agent";
       } else if (reviewAction === "feedback") {
         // Human provided feedback or instructions on how to handle
-        messages.push(new HumanMessage({
-          content: reviewData
-        }));
+        messages.push(createHumanMessage(reviewData));
         goto = "response_agent";
       } else {
         // Default to END for other actions
@@ -491,9 +488,7 @@ export const createHitlEmailAssistant = async () => {
         goto: END,
         update: {
           messages: [
-            new SystemMessage({ 
-              content: `Error in triage interrupt: ${error}`
-            })
+            createSystemMessage(`Error in triage interrupt: ${error}`)
           ]
         }
       });
@@ -512,7 +507,7 @@ export const createHitlEmailAssistant = async () => {
     
     const lastMessage = messages[messages.length - 1];
     
-    if (isAIMessage(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+    if (hasToolCalls(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
       // Check if any tool call is the "Done" tool
       if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
         return END;

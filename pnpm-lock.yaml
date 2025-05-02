@@ -14,6 +14,9 @@ importers:
       '@langchain/langgraph':
         specifier: ^0.2.67
         version: 0.2.67(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(zod-to-json-schema@3.24.5(zod@3.24.3))
+      '@langchain/langgraph-sdk':
+        specifier: ^0.0.74
+        version: 0.0.74(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))
       dotenv:
         specifier: ^16.5.0
         version: 16.5.0
@@ -29,7 +32,7 @@ importers:
         version: 3.3.1
       '@langchain/langgraph-cli':
         specifier: ^0.0.30
-        version: 0.0.30(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(@langchain/langgraph-checkpoint@0.0.17(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph@0.2.67(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(zod-to-json-schema@3.24.5(zod@3.24.3)))(openai@4.96.2(zod@3.24.3))(typescript@5.8.3)
+        version: 0.0.30(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(@langchain/langgraph-checkpoint@0.0.17(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph-sdk@0.0.74(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph@0.2.67(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(zod-to-json-schema@3.24.5(zod@3.24.3)))(openai@4.96.2(zod@3.24.3))(typescript@5.8.3)
       '@types/node':
         specifier: ^20
         version: 20.17.32
@@ -1789,7 +1792,7 @@ snapshots:
     transitivePeerDependencies:
       - openai
 
-  '@langchain/langgraph-api@0.0.30(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(@langchain/langgraph-checkpoint@0.0.17(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph@0.2.67(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(zod-to-json-schema@3.24.5(zod@3.24.3)))(openai@4.96.2(zod@3.24.3))(typescript@5.8.3)':
+  '@langchain/langgraph-api@0.0.30(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(@langchain/langgraph-checkpoint@0.0.17(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph-sdk@0.0.74(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph@0.2.67(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(zod-to-json-schema@3.24.5(zod@3.24.3)))(openai@4.96.2(zod@3.24.3))(typescript@5.8.3)':
     dependencies:
       '@babel/code-frame': 7.27.1
       '@hono/node-server': 1.14.1(hono@4.7.8)
@@ -1815,6 +1818,8 @@ snapshots:
       winston: 3.17.0
       winston-console-format: 1.0.8
       zod: 3.24.3
+    optionalDependencies:
+      '@langchain/langgraph-sdk': 0.0.74(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))
     transitivePeerDependencies:
       - babel-plugin-macros
       - openai
@@ -1825,11 +1830,11 @@ snapshots:
       '@langchain/core': 0.3.50(openai@4.96.2(zod@3.24.3))
       uuid: 10.0.0
 
-  '@langchain/langgraph-cli@0.0.30(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(@langchain/langgraph-checkpoint@0.0.17(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph@0.2.67(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(zod-to-json-schema@3.24.5(zod@3.24.3)))(openai@4.96.2(zod@3.24.3))(typescript@5.8.3)':
+  '@langchain/langgraph-cli@0.0.30(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(@langchain/langgraph-checkpoint@0.0.17(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph-sdk@0.0.74(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph@0.2.67(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(zod-to-json-schema@3.24.5(zod@3.24.3)))(openai@4.96.2(zod@3.24.3))(typescript@5.8.3)':
     dependencies:
       '@babel/code-frame': 7.27.1
       '@commander-js/extra-typings': 13.1.0(commander@13.1.0)
-      '@langchain/langgraph-api': 0.0.30(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(@langchain/langgraph-checkpoint@0.0.17(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph@0.2.67(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(zod-to-json-schema@3.24.5(zod@3.24.3)))(openai@4.96.2(zod@3.24.3))(typescript@5.8.3)
+      '@langchain/langgraph-api': 0.0.30(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(@langchain/langgraph-checkpoint@0.0.17(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph-sdk@0.0.74(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3))))(@langchain/langgraph@0.2.67(@langchain/core@0.3.50(openai@4.96.2(zod@3.24.3)))(zod-to-json-schema@3.24.5(zod@3.24.3)))(openai@4.96.2(zod@3.24.3))(typescript@5.8.3)
       chokidar: 4.0.3
       commander: 13.1.0
       dedent: 1.6.0
