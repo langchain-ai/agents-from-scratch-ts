@@ -55,8 +55,8 @@ import {
 // Create the email assistant workflow
 export const createEmailAssistant = async () => {
   // Get tools
-  const tools = getTools();
-  const toolsByName = getToolsByName(tools);
+  const tools = await getTools();
+  const toolsByName = await getToolsByName(tools);
   
   // Initialize the LLM
   const llm = await initChatModel("openai:gpt-4", { 

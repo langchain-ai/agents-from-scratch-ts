@@ -4,7 +4,8 @@
   "dependencies": ["."],
   "graphs": {
     "emailAssistant": "./scripts/email_assistant.ts:getEmailAssistant",
-    "hitlEmailAssistant": "./scripts/email_assistant_hitl.ts:getHitlEmailAssistant"
+    "hitlEmailAssistant": "./scripts/email_assistant_hitl.ts:getHitlEmailAssistant",
+    "hitlEmailAssistantMemory": "./scripts/email_assistant_hitl_memory.ts:getHitlEmailAssistantWithMemory"
   },
   "env": ".env"
 } 

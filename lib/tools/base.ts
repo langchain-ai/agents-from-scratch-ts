@@ -6,8 +6,9 @@
  */
 
 import { StructuredTool } from "@langchain/core/tools";
-import { writeEmail, triageEmail, Done } from "./default/email-tools";
-import { scheduleMeeting, checkCalendarAvailability } from "./default/calendar-tools";
+import { writeEmail, triageEmail, Done } from "./default/email-tools.js";
+import { scheduleMeeting, checkCalendarAvailability } from "./default/calendar-tools.js";
+import { backgroundTool, calPreferencesTool, responsePreferencesTool, questionTool } from "./default/memory-tools.js";
 
 /**
  * Options for customizing tool selection
@@ -25,7 +26,7 @@ export interface GetToolsOptions {
  * @param options - Configuration options for tool selection
  * @returns Array of StructuredTool instances ready for use with agents
  */
-export function getTools({ toolNames, includeGmail = false }: GetToolsOptions = {}): StructuredTool[] {
+export async function getTools({ toolNames, includeGmail = false }: GetToolsOptions = {}): Promise<StructuredTool[]> {
   // Base tools dictionary - all available tools should be registered here
   const allTools: Record<string, StructuredTool> = {
     write_email: writeEmail,
@@ -33,6 +34,10 @@ export function getTools({ toolNames, includeGmail = false }: GetToolsOptions = 
     Done: Done,
     schedule_meeting: scheduleMeeting,
     check_calendar_availability: checkCalendarAvailability,
+    background: backgroundTool,
+    cal_preferences: calPreferencesTool,
+    response_preferences: responsePreferencesTool,
+    Question: questionTool,
   };
   
   // If specific tool names are provided, filter to only those tools
@@ -52,8 +57,8 @@ export function getTools({ toolNames, includeGmail = false }: GetToolsOptions = 
  * @param tools - Optional array of tools to convert to lookup map
  * @returns Record mapping tool names to their corresponding StructuredTool instances
  */
-export function getToolsByName(tools?: StructuredTool[]): Record<string, StructuredTool> {
-  const toolsList = tools || getTools();
+export async function getToolsByName(tools?: StructuredTool[]): Promise<Record<string, StructuredTool>> {
+  const toolsList = tools || await getTools();
   
   return toolsList.reduce<Record<string, StructuredTool>>((acc, tool) => {
     acc[tool.name] = tool;

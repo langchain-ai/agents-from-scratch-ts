@@ -175,6 +175,95 @@ For the HITL version, interrupts occur at decision points, allowing you to:
 
 The interrupt dialog will show the proposed action and expected outcome, allowing you to make informed decisions during the workflow execution.
 
+### Testing All Graph Nodes
+
+To thoroughly test the entire graph and all possible paths, use the following examples:
+
+#### 1. Email Requiring Response (Triage → Response Agent)
+```json
+{
+  "email_input": {
+    "id": "email_123456789",
+    "thread_id": "thread_abc123",
+    "from_email": "client@example.com",
+    "to_email": "support@yourcompany.com",
+    "subject": "Question about API documentation",
+    "page_content": "Hello Support Team,\n\nI'm working on integrating with your API and I can't find the documentation for the '/users' endpoint. Could you please point me to where I can find this information or provide details about the request and response formats?\n\nThank you,\nSarah Johnson\nDeveloper\nClient Tech Inc.",
+    "send_time": "2025-05-01T14:22:00Z"
+  }
+}
+```
+
+#### 2. Notification Email (Triage → Triage Interrupt Handler)
+```json
+{
+  "email_input": {
+    "id": "email_789012345",
+    "thread_id": "thread_def456",
+    "from_email": "system@example.com",
+    "to_email": "team@yourcompany.com",
+    "subject": "System Maintenance - Important Notice",
+    "page_content": "Dear Team,\n\nThis is to inform you that we will be conducting scheduled system maintenance this Saturday from 10:00 PM to 2:00 AM EST. During this time, the production server will be temporarily unavailable.\n\nPlease plan your work accordingly and ensure any critical tasks are completed before this maintenance window.\n\nRegards,\nIT Operations",
+    "send_time": "2025-05-02T09:15:00Z"
+  }
+}
+```
+
+#### 3. Email to Ignore (Triage → END)
+```json
+{
+  "email_input": {
+    "id": "email_345678901",
+    "thread_id": "thread_ghi789",
+    "from_email": "marketing@newsletter.com",
+    "to_email": "all-staff@yourcompany.com",
+    "subject": "50% Off Spring Sale - Limited Time Offer!",
+    "page_content": "AMAZING DEALS JUST FOR YOU!\n\nDon't miss our Spring Sale with 50% off all products!\n\nUse promo code SPRING50 at checkout.\nOffer valid until May 15th.\n\nShop Now! Click here to browse our collection.\n\nTo unsubscribe from our mailing list, click here.",
+    "send_time": "2025-05-03T11:30:00Z"
+  }
+}
+```
+
+#### 4. Testing Triage Interrupt → Response Agent Path
+When the triage node classifies an email as "notify", you'll be prompted with an interrupt. To test this path:
+
+1. Use the "Notification Email" example above
+2. When the interrupt appears, choose the "continue" or "feedback" action
+3. Optionally provide feedback like: "Please respond to this with our availability during the maintenance window"
+4. This will direct the flow to the response_agent node
+
+#### 5. Testing Triage Interrupt → END Path
+When the triage node classifies an email as "notify", you can also choose to ignore it:
+
+1. Use the "Notification Email" example above
+2. When the interrupt appears, choose the "ignore" action
+3. This will end the workflow
+
+#### 6. Testing Response Agent Tool Calls
+When the response agent makes a tool call, you'll be prompted with an interrupt. To test different paths:
+
+**Accept the tool call:**
+Choose "accept" to execute the tool with the original arguments
+
+**Edit the tool call:**
+Choose "edit" to modify the tool arguments before execution. For example, if the agent drafts an email, you might modify the wording or add additional information.
+
+**Ignore the tool call:**
+Choose "ignore" to reject the tool call, which will send the workflow to END
+
+**Provide feedback:**
+Choose "feedback" to send instructions back to the agent. For example: "The tone is too formal, please make it more conversational"
+
+### Testing Memory Features
+
+After running a few interactions with different types of emails, the memory features should begin to adapt. Try the following:
+
+1. Run a sequence of emails with similar themes
+2. Edit several email responses in a consistent way (e.g., always making them more concise)
+3. Then send a new email of the same type and observe if the agent adapts its behavior
+
+For example, if you consistently ignore system maintenance emails, eventually the triage preferences should update to classify similar emails as "ignore" instead of "notify".
+
 ### Testing Different Scenarios
 
 Try modifying the email content to test different classification outcomes:
@@ -184,7 +273,16 @@ Try modifying the email content to test different classification outcomes:
 3. **For "ignore" classification**: Use marketing language, irrelevant information, or messages clearly meant for others
 
 
-## Course outline 
+### Memory Implementation
+#### Memory Management:
+`getMemory:` Retrieves memory from the store or initializes with defaults
+`updateMemory:` Intelligently updates memory based on user feedback
+#### Memory is organized in namespaces for different aspects:
+- ["email_assistant", "triage_preferences"]: Email classification preferences
+- ["email_assistant", "response_preferences"]: Email response style preferences
+- ["email_assistant", "cal_preferences"]: Calendar meeting preferences
+
+## TS Video outline 
 > BUILD
 
 > EVAL
