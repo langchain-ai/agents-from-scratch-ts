@@ -1,5 +1,6 @@
 // LangChain imports for chat models
 import { initChatModel } from "langchain/chat_models/universal";
+import { BaseChatModel as ChatModel } from "@langchain/core/language_models/chat_models";
 
 // LangGraph imports
 import { 
@@ -13,6 +14,7 @@ import {
 } from "@langchain/langgraph";
 import { ToolCall } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
+import { StructuredTool } from "@langchain/core/tools";
 
 // Zod imports
 import { z } from "zod";
@@ -94,32 +96,31 @@ const customMessagesReducer = (left: Message[], right: Message[]) => {
 // TODO: REMOVE THIS do inline messages instead 
 // Create message factory functions for types
 const createSystemMessage = (content: string): SystemMessage => {
-  return { type: "system", content, additional_kwargs: {} } as SystemMessage;
+  return { type: "system", content };
 };
 
 const createHumanMessage = (content: string): HumanMessage => {
-  return { type: "human", content, additional_kwargs: {} } as HumanMessage;
+  return { type: "human", content };
 };
 
 const createToolMessage = (content: string, tool_call_id: string): ToolMessage => {
-  return { type: "tool", content, tool_call_id, additional_kwargs: {} } as ToolMessage;
+  return { type: "tool", content, tool_call_id };
 };
 
 const createAIMessage = (content: string, tool_calls?: ToolCall[]): AIMessage => {
   return { 
     type: "ai", 
     content, 
-    tool_calls: tool_calls || [],
-    additional_kwargs: {} 
-  } as AIMessage;
+    tool_calls: tool_calls || []
+  };
 };
 
 // TODO , check for 0 length array 
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
   return message.type === "ai" && 
-    (message as any).tool_calls !== undefined && 
-    Array.isArray((message as any).tool_calls);
+    "tool_calls" in message && 
+    Array.isArray(message.tool_calls);
 };
 
 // Define UserPreferences interface for memory updates
@@ -310,7 +311,7 @@ async function updateMemory(
 /**
  * Create the triage router node with memory integration
  */
-export const createTriageRouterNode = (llm: any, store: InMemoryStore) => {
+export const createTriageRouterNode = (llm: ChatModel, store: InMemoryStore) => {
   return async (state: AgentStateType): Promise<Command> => {
     try {
       const { email_input } = state;
@@ -525,7 +526,7 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
 /**
  * Create the LLM call node with memory integration
  */
-export const createLLMCallNode = (llmWithTools: any, store: InMemoryStore) => {
+export const createLLMCallNode = (llmWithTools: ChatModel, store: InMemoryStore) => {
   return async (state: AgentStateType) => {
     try {
       // Get memory preferences
@@ -559,7 +560,7 @@ export const createLLMCallNode = (llmWithTools: any, store: InMemoryStore) => {
       
       // Return the AIMessage result
       return {
-        messages: [result]
+        messages: [result as unknown as Message]
       };
     } catch (error: any) {
       console.error("Error in LLM call:", error);
@@ -575,7 +576,7 @@ export const createLLMCallNode = (llmWithTools: any, store: InMemoryStore) => {
 /**
  * Create the interrupt handler node with memory updates
  */
-export const createInterruptHandlerNode = (toolsByName: any, store: InMemoryStore) => {
+export const createInterruptHandlerNode = (toolsByName: Record<string, StructuredTool>, store: InMemoryStore) => {
   return async (state: AgentStateType): Promise<Command> => {
     // Store messages to be returned
     const result: Message[] = [];
@@ -934,9 +935,9 @@ export const createShouldContinueFunction = () => {
  * Build the overall workflow graph with memory integration
  */
 export const buildOverallWorkflow = (
-  triageRouterNode: any, 
-  triageInterruptHandlerNode: any, 
-  responseAgent: any, 
+  triageRouterNode: (state: AgentStateType) => Promise<Command>, 
+  triageInterruptHandlerNode: (state: AgentStateType) => Promise<Command>, 
+  responseAgent: ReturnType<typeof buildAgentGraph>, 
   store: InMemoryStore
 ) => {
   // Build overall workflow with the builder pattern

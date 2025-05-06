@@ -1,5 +1,6 @@
 // LangChain imports for chat models
 import { initChatModel } from "langchain/chat_models/universal";
+import { BaseChatModel as ChatModel } from "@langchain/core/language_models/chat_models";
 
 // LangGraph imports
 import { 
@@ -13,6 +14,7 @@ import {
 import { ToolCall } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { StructuredTool } from "@langchain/core/tools";
 
 // Zod imports
 import { z } from "zod";
@@ -78,31 +80,30 @@ import {
 
 // Create message factory functions for types
 const createSystemMessage = (content: string): SystemMessage => {
-  return { type: "system", content, additional_kwargs: {} } as SystemMessage;
+  return { type: "system", content };
 };
 
 const createHumanMessage = (content: string): HumanMessage => {
-  return { type: "human", content, additional_kwargs: {} } as HumanMessage;
+  return { type: "human", content };
 };
 
 const createToolMessage = (content: string, tool_call_id: string): ToolMessage => {
-  return { type: "tool", content, tool_call_id, additional_kwargs: {} } as ToolMessage;
+  return { type: "tool", content, tool_call_id };
 };
 
 const createAIMessage = (content: string, tool_calls?: ToolCall[]): AIMessage => {
   return { 
     type: "ai", 
     content, 
-    tool_calls: tool_calls || [],
-    additional_kwargs: {} 
-  } as AIMessage;
+    tool_calls: tool_calls || []
+  };
 };
 
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
   return message.type === "ai" && 
-    (message as any).tool_calls !== undefined && 
-    Array.isArray((message as any).tool_calls);
+    "tool_calls" in message && 
+    Array.isArray(message.tool_calls);
 };
 
 // Define proper TypeScript types for our state
@@ -130,8 +131,8 @@ export const setupLLMAndTools = async () => {
 /**
  * Create the LLM decision node
  */
-export const createLLMCallNode = (llmWithTools: any) => {
-  return async (state: AgentStateType) => {
+export const createLLMCallNode = (llmWithTools: ChatModel) => {
+  return async (state: AgentStateType): Promise<{ messages: Message[] }> => {
     const { messages } = state;
     
     // Set up system prompt for the agent
@@ -150,9 +151,9 @@ export const createLLMCallNode = (llmWithTools: any) => {
     // Run the LLM with the messages
     const result = await llmWithTools.invoke(allMessages);
     
-    // Return the AIMessage result
+    // Return the AIMessage result - need to cast through unknown since the types don't have proper overlap
     return {
-      messages: [result]
+      messages: [result as unknown as Message]
     };
   };
 };
@@ -160,7 +161,7 @@ export const createLLMCallNode = (llmWithTools: any) => {
 /**
  * Create the interrupt handler node for human review
  */
-export const createInterruptHandlerNode = (toolsByName: any) => {
+export const createInterruptHandlerNode = (toolsByName: Record<string, StructuredTool>) => {
   return async (state: AgentStateType): Promise<Command> => {
     // Store messages to be returned
     const result: Message[] = [];

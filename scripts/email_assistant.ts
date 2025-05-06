@@ -1,5 +1,6 @@
 // LangChain imports for chat models
 import { initChatModel } from "langchain/chat_models/universal";
+import { BaseChatModel as ChatModel } from "@langchain/core/language_models/chat_models";
 
 // LangGraph imports
 import { StructuredTool } from "@langchain/core/tools";
@@ -72,22 +73,22 @@ import { HumanMessage, SystemMessage, ToolMessage, AIMessage, Message } from "@l
 
 // Create message factory functions for types
 const createSystemMessage = (content: string): SystemMessage => {
-  return { type: "system", content, additional_kwargs: {} } as SystemMessage;
+  return { type: "system", content };
 };
 
 const createHumanMessage = (content: string): HumanMessage => {
-  return { type: "human", content, additional_kwargs: {} } as HumanMessage;
+  return { type: "human", content };
 };
 
 const createToolMessage = (content: string, tool_call_id: string): ToolMessage => {
-  return { type: "tool", content, tool_call_id, additional_kwargs: {} } as ToolMessage;
+  return { type: "tool", content, tool_call_id };
 };
 
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
   return message.type === "ai" && 
-    (message as any).tool_calls !== undefined && 
-    Array.isArray((message as any).tool_calls);
+    "tool_calls" in message && 
+    Array.isArray(message.tool_calls);
 };
 
 // Define proper TypeScript types for our state
@@ -118,7 +119,7 @@ export const setupLLMAndTools = async () => {
 /**
  * Create the LLM decision node
  */
-export const createLLMCallNode = (llmWithTools: any) => {
+export const createLLMCallNode = (llmWithTools: ChatModel) => {
   return async (state: AgentStateType) => {
     /**
      * LLM decides whether to call a tool or not
@@ -131,13 +132,15 @@ export const createLLMCallNode = (llmWithTools: any) => {
       .replace("{response_preferences}", defaultResponsePreferences)
       .replace("{cal_preferences}", defaultCalPreferences);
     
+    // Run the LLM with the messages
     const response = await llmWithTools.invoke([
       createSystemMessage(systemPromptContent),
       ...messages
     ]);
     
+    // Use explicit casting as the response is compatible with Message in runtime
     return {
-      messages: [response]
+      messages: [response as unknown as Message]
     };
   };
 };
@@ -171,7 +174,11 @@ export const createShouldContinueFunction = () => {
 /**
  * Build the agent state graph
  */
-export const buildAgentGraph = (llmCallNode: any, toolNode: ToolNode, shouldContinue: any) => {
+export const buildAgentGraph = (
+  llmCallNode: (state: AgentStateType) => Promise<{ messages: Message[] }>, 
+  toolNode: ToolNode, 
+  shouldContinue: (state: AgentStateType) => string
+) => {
   // Build agent workflow with the builder pattern
   const agentBuilder = new StateGraph<typeof BaseEmailAgentState, 
     AgentStateType, 
@@ -199,7 +206,7 @@ export const buildAgentGraph = (llmCallNode: any, toolNode: ToolNode, shouldCont
 /**
  * Create the triage router node
  */
-export const createTriageRouterNode = (llm: any) => {
+export const createTriageRouterNode = (llm: ChatModel) => {
   return async (state: AgentStateType) => {
     /**
      * Analyze email content to decide if we should respond, notify, or ignore.
@@ -287,7 +294,7 @@ export const createTriageRouterNode = (llm: any) => {
         goto,
         update
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error in triage router:", error);
       // In case of error, we default to END without processing the email
       return new Command({
@@ -295,7 +302,7 @@ export const createTriageRouterNode = (llm: any) => {
         update: {
           classification_decision: "ignore",
           messages: [
-            createSystemMessage(`Error processing email: ${error.message}`)
+            createSystemMessage(`Error processing email: ${error instanceof Error ? error.message : String(error)}`)
           ]
         }
       });
@@ -306,7 +313,10 @@ export const createTriageRouterNode = (llm: any) => {
 /**
  * Build the overall workflow graph
  */
-export const buildOverallWorkflow = (triageRouterNode: any, agent: any) => {
+export const buildOverallWorkflow = (
+  triageRouterNode: (state: AgentStateType) => Promise<Command>,
+  agent: ReturnType<typeof buildAgentGraph>
+) => {
   // Build overall workflow with the builder pattern
   const overallWorkflow = new StateGraph<typeof BaseEmailAgentState, 
     AgentStateType, 
