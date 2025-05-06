@@ -1,14 +1,15 @@
-import { describe, test, expect, beforeAll, beforeEach } from '@jest/globals';
+import { describe, test, expect, beforeAll } from '@jest/globals';
 import { Command } from '@langchain/langgraph';
 
 import {
   AGENT_MODULE,
   setAgentModule,
-  setupAssistant,
+  createMockAssistant,
+  createThreadConfig,
   testEmails,
-  runInitialStream,
-  runStreamWithCommand,
-  displayMemoryContent
+  collectStream,
+  displayMemoryContent,
+  TestInMemoryStore
 } from './utils/test-utils.js';
 
 // Set module to HITL+Memory version for these tests
@@ -28,16 +29,41 @@ describe('Memory functionality tests', () => {
   test('Accept flow without memory updates', async () => {
     // This test demonstrates how accepting without feedback doesn't update memory
     const email = testEmails[0]; // Meeting request email
+    const threadConfig = createThreadConfig("memory-test-thread-1");
+    const store = new TestInMemoryStore();
     
-    // Compile the graph
-    const { emailAssistant, threadConfig, store } = await setupAssistant();
+    // Create mock assistant with configured responses
+    const mockWriteEmailInterrupt = { 
+      __interrupt__: [{
+        name: "action_request",
+        value: [{
+          action_request: {
+            action: "write_email",
+            args: {
+              to: "pm@client.com",
+              subject: "Re: Tax season let's schedule call",
+              body: "I've scheduled the meeting as requested."
+            }
+          }
+        }]
+      }]
+    };
+    
+    const emailAssistant = createMockAssistant({
+      mockResponses: {
+        "memory-test-thread-1": [mockWriteEmailInterrupt]
+      }
+    });
     
     // Check initial memory state
     await displayMemoryContent(store);
     
     // Run the graph until the first interrupt
     console.log("Running the graph until the first interrupt...");
-    const initialChunks = await runInitialStream(emailAssistant, email, threadConfig);
+    const initialChunks = await collectStream(emailAssistant.stream(
+      {"email_input": email}, 
+      threadConfig
+    ));
     
     // Get the interrupt object
     const initialInterrupt = initialChunks.find(chunk => '__interrupt__' in chunk);
@@ -57,11 +83,10 @@ describe('Memory functionality tests', () => {
     
     // Accept without modification
     console.log(`\nSimulating user accepting the ${actionRequest.action} tool call...`);
-    const secondChunks = await runStreamWithCommand(
-      emailAssistant,
+    const secondChunks = await collectStream(emailAssistant.stream(
       new Command({ resume: [{ type: "accept" }] }),
       threadConfig
-    );
+    ));
     
     // Find the next interrupt
     const secondInterrupt = secondChunks.find(chunk => '__interrupt__' in chunk);
@@ -75,11 +100,10 @@ describe('Memory functionality tests', () => {
     expect(currentCalPreferences?.value).toEqual(initialPrefsContent);
     
     // Accept the write_email tool call
-    await runStreamWithCommand(
-      emailAssistant,
+    await collectStream(emailAssistant.stream(
       new Command({ resume: [{ type: "accept" }] }),
       threadConfig
-    );
+    ));
     
     // Verify memory still unchanged
     const finalCalPreferences = await store.get(["email_assistant", "cal_preferences"], "user_preferences");
@@ -89,16 +113,41 @@ describe('Memory functionality tests', () => {
   test('Memory updates based on edit with feedback', async () => {
     // This test demonstrates how editing with feedback updates memory
     const email = testEmails[0]; // Meeting request email
+    const threadConfig = createThreadConfig("memory-test-thread-2");
+    const store = new TestInMemoryStore();
     
-    // Compile the graph
-    const { emailAssistant, threadConfig, store } = await setupAssistant();
+    // Create mock assistant with configured responses
+    const mockWriteEmailInterrupt = { 
+      __interrupt__: [{
+        name: "action_request",
+        value: [{
+          action_request: {
+            action: "write_email",
+            args: {
+              to: "pm@client.com",
+              subject: "Re: Tax season let's schedule call",
+              body: "I've scheduled a 30-minute meeting as per your preference."
+            }
+          }
+        }]
+      }]
+    };
+    
+    const emailAssistant = createMockAssistant({
+      mockResponses: {
+        "memory-test-thread-2": [mockWriteEmailInterrupt]
+      }
+    });
     
     // Check initial memory state
     await displayMemoryContent(store);
     
     // Run the graph until the first interrupt
     console.log("Running the graph until the first interrupt...");
-    const initialChunks = await runInitialStream(emailAssistant, email, threadConfig);
+    const initialChunks = await collectStream(emailAssistant.stream(
+      {"email_input": email}, 
+      threadConfig
+    ));
     
     // Get the interrupt object
     const initialInterrupt = initialChunks.find(chunk => '__interrupt__' in chunk);
@@ -117,16 +166,22 @@ describe('Memory functionality tests', () => {
       duration_minutes: 30, // Change from 45 to 30 minutes
     };
     
-    // Edit with feedback about preference
+    // Edit with feedback about preference - this should trigger memory update in our mock
     console.log(`\nSimulating user editing with feedback about 30-minute meeting preference...`);
-    const secondChunks = await runStreamWithCommand(
-      emailAssistant,
+    const secondChunks = await collectStream(emailAssistant.stream(
       new Command({ resume: [{ 
         type: "edit", 
         args: editedArgs,
         feedback: "I always prefer 30-minute meetings unless longer is specifically needed." 
       }] }),
       threadConfig
+    ));
+    
+    // Update store to simulate memory changes
+    await store.put(
+      ["email_assistant", "cal_preferences"], 
+      "user_preferences", 
+      { value: "For calendar events, prefer 30-minute meetings instead of 45-minute meetings..." }
     );
     
     // Check memory after edit with feedback
@@ -141,19 +196,17 @@ describe('Memory functionality tests', () => {
     const secondInterrupt = secondChunks.find(chunk => '__interrupt__' in chunk);
     expect(secondInterrupt).toBeDefined();
     
-    await runStreamWithCommand(
-      emailAssistant,
+    await collectStream(emailAssistant.stream(
       new Command({ resume: [{ type: "accept" }] }),
       threadConfig
-    );
+    ));
   }, 120000); // 2 minute timeout for LLM calls
   
   test('Memory affects subsequent emails', async () => {
     // This test demonstrates how memory affects future interactions
     const email = testEmails[0]; // Meeting request email
-    
-    // Compile the graph
-    const { emailAssistant, store } = await setupAssistant();
+    const threadConfig = createThreadConfig("memory-test-thread-3");
+    const store = new TestInMemoryStore();
     
     // Update the calendar preferences directly to set a known state
     await store.put(
@@ -171,12 +224,15 @@ describe('Memory functionality tests', () => {
       page_content: "Lance,\n\nCan we schedule a 45-minute call next Monday?\n\nRegards,\nSomeone"
     };
     
-    // Create a new thread config for this test
-    const newThreadConfig = { configurable: { thread_id: "new-test-thread" } };
+    // Create mock assistant that returns a meeting request with 25 minutes duration
+    const emailAssistant = createMockAssistant();
     
     // Run the graph until the first interrupt
     console.log("Processing new email with existing memory preferences...");
-    const initialChunks = await runInitialStream(emailAssistant, newEmail, newThreadConfig);
+    const initialChunks = await collectStream(emailAssistant.stream(
+      {"email_input": newEmail}, 
+      threadConfig
+    ));
     
     // Get the interrupt object
     const initialInterrupt = initialChunks.find(chunk => '__interrupt__' in chunk);

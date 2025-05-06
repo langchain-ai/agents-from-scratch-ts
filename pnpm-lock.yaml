@@ -60,6 +60,9 @@ importers:
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@20.17.32)
+      jest-ts-webcompat-resolver:
+        specifier: ^1.0.1
+        version: 1.0.1(jest-resolve@29.7.0)
       ts-jest:
         specifier: ^29.1.1
         version: 29.3.2(@babel/core@7.27.1)(@jest/transform@29.7.0)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.27.1))(jest@29.7.0(@types/node@20.17.32))(typescript@5.8.3)
@@ -1944,6 +1947,11 @@ packages:
   jest-snapshot@29.7.0:
     resolution: {integrity: sha512-Rm0BMWtxBcioHr1/OX5YCP8Uov4riHvKPknOGs804Zg9JGZgmIBkbtlxJC/7Z4msKYVbIJtfU+tKb8xlYNfdkw==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
+
+  jest-ts-webcompat-resolver@1.0.1:
+    resolution: {integrity: sha512-6rz4gejsOd0SYq5F/DmVGvJlFPmiCqkoXhkNKhyL1Uaqz4GyFMBbGUoBK+koXHThQdq97Ev7XJiyZ8iusMpWgQ==}
+    peerDependencies:
+      jest-resolve: '*'
 
   jest-util@29.7.0:
     resolution: {integrity: sha512-z6EbKajIpqGKU56y5KBUgy1dt1ihhQJgWzUlZHArA/+X2ad7Cb5iF+AK1EWVL/Bo7Rz9uurpqw6SiBCefUbCGA==}
@@ -4822,6 +4830,10 @@ snapshots:
       semver: 7.7.1
     transitivePeerDependencies:
       - supports-color
+
+  jest-ts-webcompat-resolver@1.0.1(jest-resolve@29.7.0):
+    dependencies:
+      jest-resolve: 29.7.0
 
   jest-util@29.7.0:
     dependencies:

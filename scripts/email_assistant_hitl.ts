@@ -572,3 +572,8 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
 
 // Initialize and export HITL email assistant directly with a default checkpointer
 export const hitlEmailAssistant = initializeHitlEmailAssistant(new MemorySaver()); 
+
+// Export the function with the name the tests expect
+export const createHitlEmailAssistant = async () => {
+  return initializeHitlEmailAssistant(new MemorySaver());
+}; 

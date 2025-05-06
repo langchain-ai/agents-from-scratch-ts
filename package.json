@@ -8,10 +8,10 @@
     "dev:hitl": "tsx scripts/dev-hitl.ts",
     "lint": "eslint .",
     "agent": "langgraphjs dev",
-    "test": "jest",
-    "test:hitl": "cross-env AGENT_MODULE=email_assistant_hitl jest --config=tests-ts/jest.config.js hitl_testing",
-    "test:memory": "cross-env AGENT_MODULE=email_assistant_hitl_memory jest --config=tests-ts/jest.config.js memory_testing",
-    "test:base": "cross-env AGENT_MODULE=email_assistant jest --config=tests-ts/jest.config.js test_response"
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config=tests-ts/jest.config.mjs",
+    "test:hitl": "cross-env NODE_OPTIONS=--experimental-vm-modules AGENT_MODULE=email_assistant_hitl jest --config=tests-ts/jest.config.mjs hitl_testing",
+    "test:memory": "cross-env NODE_OPTIONS=--experimental-vm-modules AGENT_MODULE=email_assistant_hitl_memory jest --config=tests-ts/jest.config.mjs memory_testing",
+    "test:base": "cross-env NODE_OPTIONS=--experimental-vm-modules AGENT_MODULE=email_assistant jest --config=tests-ts/jest.config.mjs test_response"
   },
   "dependencies": {
     "@jest/globals": "^29.7.0",
@@ -33,6 +33,7 @@
     "cross-env": "^7.0.3",
     "eslint": "^9",
     "jest": "^29.7.0",
+    "jest-ts-webcompat-resolver": "^1.0.1",
     "ts-jest": "^29.1.1",
     "tsx": "^4.7.0",
     "typescript": "^5",

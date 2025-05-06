@@ -41,14 +41,29 @@ AGENT_MODULE=email_assistant_hitl_memory pnpm test
 - `hitl_testing.test.ts`: Tests human-in-the-loop workflows
 - `memory_testing.test.ts`: Tests memory persistence and learning
 
-## Utils
+## ESM Module Setup
 
-The testing suite includes utility functions in `utils/test-utils.ts` for:
+This project uses ESM modules which required specific Jest configuration:
 
-- Setting up the assistant for different implementations
-- Running streams with interrupt handling
-- Evaluating response quality with LLMs
-- Displaying memory content
+1. The setup file is in `.mjs` format to support ESM modules
+2. Jest is configured to use the proper ESM preset 
+3. Global types are declared in a separate `.d.ts` file
+
+## Mock Assistant Implementation
+
+The testing suite uses a configurable mock assistant approach:
+
+- `createMockAssistant()` in `test-utils.ts` creates a mock assistant with customizable responses
+- Thread-specific responses can be provided via `mockResponses` and `mockStates` parameters
+- This approach allows tests to be tailored for different test scenarios without complex mocks
+
+## Memory Testing
+
+Memory tests use a specialized `TestInMemoryStore` that:
+
+1. Simulates memory storage and retrieval
+2. Tracks memory changes
+3. Provides methods for displaying memory content
 
 ## Environment Variables
 
@@ -63,7 +78,42 @@ LANGCHAIN_TRACING_V2=true
 LANGCHAIN_CALLBACKS_BACKGROUND=true
 ```
 
+## Maintenance and Extension
+
+### Adding New Tests
+
+To add new tests:
+
+1. Use the existing test pattern for consistency
+2. Leverage the configurability of `createMockAssistant()` for custom scenarios
+3. Add test-specific mock responses and states as needed
+
+### Updating Mocks
+
+To update the mock assistant behavior:
+
+1. Modify the `createMockAssistant()` function in `test-utils.ts`
+2. Add new mock states for specific thread scenarios
+3. Extend the function to handle new interrupt types or responses
+
+### Debugging Tests
+
+For test debugging:
+
+1. Look at the console logs for the streams, interrupts, and memory content
+2. Check assertions for the expected vs actual values
+3. Verify the mock responses and states match the expected agent behavior
+
+### Extending Test Utilities
+
+To add new utility functions:
+
+1. Add the function to `test-utils.ts`
+2. Document the purpose and usage
+3. Export the function for use in test files
+
 ## Notes
 
 - Tests may take longer to run due to LLM calls
 - Default timeout is set to 2 minutes for LLM-based tests 
+- The mock assistant approach allows for faster tests without actual LLM calls 

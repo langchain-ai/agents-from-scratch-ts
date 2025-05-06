@@ -5,13 +5,9 @@ import { beforeAll } from '@jest/globals';
 // Load environment variables
 config();
 
-// Set up global variables for testing
-declare global {
-  var criteriaEvalLLM: ChatOpenAI;
-}
-
 // Set up global model for evaluations
-global.criteriaEvalLLM = new ChatOpenAI({
+// @ts-ignore - Global types will be picked up from setup.d.ts
+globalThis.criteriaEvalLLM = new ChatOpenAI({
   modelName: 'gpt-4o',
   temperature: 0
 });

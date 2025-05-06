@@ -952,3 +952,8 @@ export const initializeEmailAssistant = async () => {
 
 // Initialize and export HITL email assistant with memory directly
 export const hitlEmailAssistantWithMemory = initializeEmailAssistant();
+
+// Add export with the function name expected by tests
+export const createHitlEmailAssistantWithMemory = async () => {
+  return initializeEmailAssistant();
+};
