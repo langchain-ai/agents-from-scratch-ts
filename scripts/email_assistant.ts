@@ -1,3 +1,40 @@
+/**
+ * @fileoverview Basic Email Assistant
+ * 
+ * This script implements a basic email assistant that can triage incoming emails
+ * and generate responses without human intervention.
+ *
+ * @module email_assistant
+ * 
+ * @structure
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │                           Email Assistant                                │
+ * ├─────────────────────────────────────────────────────────────────────────┤
+ * │ COMPONENTS                                                               │
+ * │ - LLM                   : GPT-4 model for decision making                │
+ * │ - Tools                 : Collection of tools for agent actions          │
+ * │                                                                          │
+ * │ GRAPH NODES                                                              │
+ * │ - triage_router         : Classifies emails (ignore/respond/notify)      │
+ * │ - response_agent        : Subgraph for handling email responses          │
+ * │   ├─ llm_call           : Generates responses or tool calls              │
+ * │   └─ environment        : Tool execution node                            │
+ * │                                                                          │
+ * │ EDGES                                                                    │
+ * │ - START → triage_router                                                  │
+ * │ - triage_router → response_agent/END                                     │
+ * │ - response_agent.START → llm_call                                        │
+ * │ - llm_call → environment/END                                             │
+ * │ - environment → llm_call                                                 │
+ * │                                                                          │
+ * │ KEY FUNCTIONS                                                            │
+ * │ - initializeEmailAssistant(): Creates and configures the agent graph     │
+ * │ - llmCallNode()         : Generates responses using LLM                  │
+ * │ - triageRouterNode()    : Classifies incoming emails                     │
+ * │ - shouldContinue()      : Routes graph based on agent output             │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ */
+
 // LangChain imports for chat models
 import { initChatModel } from "langchain/chat_models/universal";
 import { BaseChatModel as ChatModel } from "@langchain/core/language_models/chat_models";
@@ -54,22 +91,6 @@ import {
 // Message Types from LangGraph SDK
 import { HumanMessage, SystemMessage, ToolMessage, AIMessage, Message } from "@langchain/langgraph-sdk";
 
-/**
- * @file Email Assistant
- * @description Modular implementation of an email assistant that can triage and respond to emails
- * 
- * @module EmailAssistant
- * 
- * @exports
- * @function setupLLMAndTools - Initializes LLM and tools for the assistant
- * @function createLLMCallNode - Creates the LLM node for decision making
- * @function createShouldContinueFunction - Provides conditional routing logic
- * @function buildAgentGraph - Constructs the agent state graph
- * @function createTriageRouterNode - Implements email triage logic
- * @function buildOverallWorkflow - Creates the complete workflow graph
- * @function createEmailAssistant - Main function to initialize the assistant
- * @function getEmailAssistant - Server-side utility function
- */
 
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
@@ -141,7 +162,7 @@ export const initializeEmailAssistant = async () => {
     
     if (hasToolCalls(lastMessage) && lastMessage.tool_calls.length > 0) {
       // Check if any tool call is the "Done" tool
-      if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
+      if (lastMessage.tool_calls.some(toolCall => toolCall.name === "Done")) {
         return END;
       }
       return "environment";

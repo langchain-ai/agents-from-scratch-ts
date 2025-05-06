@@ -1,3 +1,42 @@
+/**
+ * @fileoverview Email Assistant with HITL and Memory
+ * 
+ * This script implements an advanced email assistant that builds on the HITL version
+ * by adding persistent memory capabilities to learn from user feedback and preferences.
+ * 
+ * @module email_assistant_hitl_memory
+ * 
+ * @structure
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │                       Email Assistant with Memory                        │
+ * ├─────────────────────────────────────────────────────────────────────────┤
+ * │ COMPONENTS                                                               │
+ * │ - LLM (with tools)        : GPT-4 model for decision making              │
+ * │ - Memory System           : InMemoryStore for maintaining preferences    │
+ * │                                                                          │
+ * │ GRAPH NODES                                                              │
+ * │ - triage_router           : Classifies emails using memory preferences   │
+ * │ - triage_interrupt_handler: Gets human feedback on notification emails   │
+ * │ - response_agent          : Subgraph for handling email responses        │
+ * │   ├─ llm_call             : Generates responses or tool calls            │
+ * │   └─ interrupt_handler    : Handles human review of agent actions        │
+ * │                                                                          │
+ * │ MEMORY NAMESPACES                                                        │
+ * │ - ["email_assistant", "triage_preferences"] : Email classification rules │
+ * │ - ["email_assistant", "response_preferences"]: Email writing preferences │
+ * │ - ["email_assistant", "cal_preferences"]     : Calendar preferences      │
+ * │                                                                          │
+ * │ KEY FUNCTIONS                                                            │
+ * │ - setupLLMAndTools()      : Initializes LLM and tools                    │
+ * │ - getMemory()             : Retrieves preferences from memory store      │
+ * │ - updateMemory()          : Updates preferences based on user feedback   │
+ * │ - createTriageRouterNode(): Creates email classification node            │
+ * │ - createInterruptHandlerNode(): Creates human review handling node       │
+ * │ - createLLMCallNode()     : Creates node for LLM response generation     │
+ * │ - initializeEmailAssistant(): Creates the agent graph with all nodes     │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ */
+
 // LangChain imports for chat models
 import { initChatModel } from "langchain/chat_models/universal";
 import { BaseChatModel as ChatModel } from "@langchain/core/language_models/chat_models";
@@ -59,28 +98,6 @@ import {
   formatForDisplay
 } from "../lib/utils.js";
 
-/**
- * @file Email Assistant with Human-in-the-Loop and Memory
- * @description Modular implementation of an email assistant with human review capability and memory
- * 
- * @module EmailAssistantHITLMemory
- * 
- * @exports
- * @function setupLLMAndTools - Initializes LLM and tools for the assistant
- * @function getMemory - Retrieves memory from the store with fallback
- * @function updateMemory - Updates memory in the store based on user feedback
- * 
- * @function createTriageRouterNode - Implements email triage logic with memory
- * @function createTriageInterruptHandlerNode - Handles human review for triage with memory updates
- * @function createLLMCallNode - Creates the LLM node with memory integration
- * @function createInterruptHandlerNode - Creates the interrupt handler with memory updates
- * 
- * @function createShouldContinueFunction - Provides conditional routing logic
- * @function buildAgentGraph - Constructs the agent state graph
- * @function buildOverallWorkflow - Creates the complete workflow graph with memory
- * @function createHitlEmailAssistantWithMemory - Main function to initialize the assistant
- * @function getHitlEmailAssistantWithMemory - Server-side utility function 
- */
 
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
@@ -137,8 +154,26 @@ Remember:
 - Output the complete updated profile as a string
 `;
 
+// Define the shouldContinue function needed for conditional edges
+const shouldContinue = (state: AgentStateType) => {
+  const messages = state.messages;
+  if (!messages || messages.length === 0) return END;
+  
+  const lastMessage = messages[messages.length - 1];
+  
+  if (hasToolCalls(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+    // Check if any tool call is the "Done" tool
+    if (lastMessage.tool_calls.some(toolCall => toolCall.name === "Done")) {
+      return END;
+    }
+    return "interrupt_handler";
+  }
+  
+  return END;
+};
+
 /**
- * Initialize LLM and tools
+ *   LLM and tools
  */
 export const setupLLMAndTools = async () => {
   // Get tools

@@ -1,3 +1,42 @@
+/**
+ * @fileoverview Email Assistant with Human-in-the-Loop (HITL)
+ * 
+ * This script implements an email assistant with human review capabilities,
+ * allowing users to review, edit, or reject proposed actions before execution.
+ * 
+ * @module email_assistant_hitl
+ * 
+ * @structure
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │                         HITL Email Assistant                             │
+ * ├─────────────────────────────────────────────────────────────────────────┤
+ * │ COMPONENTS                                                               │
+ * │ - LLM                   : GPT-4 model for decision making                │
+ * │ - Checkpointer          : MemorySaver for saving workflow state          │
+ * │                                                                          │
+ * │ GRAPH NODES                                                              │
+ * │ - triage_router         : Classifies emails (ignore/respond/notify)      │
+ * │ - triage_interrupt_handler: Gets human input on notification emails      │
+ * │ - response_agent        : Subgraph for handling email responses          │
+ * │   ├─ llm_call           : Generates responses or tool calls              │
+ * │   └─ interrupt_handler  : Handles human review of agent actions          │
+ * │                                                                          │
+ * │ EDGES                                                                    │
+ * │ - START → triage_router                                                  │
+ * │ - triage_router → triage_interrupt_handler/response_agent/END            │
+ * │ - triage_interrupt_handler → response_agent/END                          │
+ * │ - response_agent → END                                                   │
+ * │                                                                          │
+ * │ KEY FUNCTIONS                                                            │
+ * │ - initializeHitlEmailAssistant(): Creates and configures the agent graph │
+ * │ - llmCallNode()         : Generates responses using LLM                  │
+ * │ - interruptHandlerNode(): Handles human review of tool calls             │
+ * │ - triageRouterNode()    : Classifies incoming emails                     │
+ * │ - triageInterruptHandlerNode(): Processes notifications with human input │
+ * │ - shouldContinue()      : Routes graph based on agent output             │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ */
+
 // LangChain imports for chat models
 import { initChatModel } from "langchain/chat_models/universal";
 import { BaseChatModel as ChatModel } from "@langchain/core/language_models/chat_models";
@@ -59,24 +98,6 @@ import {
   Message 
 } from "@langchain/langgraph-sdk";
 
-/**
- * @file Email Assistant with Human-in-the-Loop
- * @description Modular implementation of an email assistant with human review capability
- * 
- * @module EmailAssistantHITL
- * 
- * @exports
- * @function setupLLMAndTools - Initializes LLM and tools for the assistant
- * @function createLLMCallNode - Creates the LLM node for decision making
- * @function createInterruptHandlerNode - Creates the interrupt handler for human review
- * @function createShouldContinueFunction - Provides conditional routing logic
- * @function buildAgentGraph - Constructs the agent state graph
- * @function createTriageRouterNode - Implements email triage logic
- * @function createTriageInterruptHandlerNode - Handles human review for triage
- * @function buildOverallWorkflow - Creates the complete workflow graph
- * @function createHitlEmailAssistant - Main function to initialize the assistant
- * @function getHitlEmailAssistant - Server-side utility function
- */
 
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
@@ -326,7 +347,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
     
     if (hasToolCalls(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
       // Check if any tool call is the "Done" tool
-      if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
+      if (lastMessage.tool_calls.some(toolCall => toolCall.name === "Done")) {
         return END;
       }
       return "interrupt_handler";
