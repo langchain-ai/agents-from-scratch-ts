@@ -97,9 +97,9 @@ type AgentStateType = BaseEmailAgentStateType;
 type AgentNodes = typeof START | typeof END | "llm_call" | "environment" | "triage_router" | "response_agent";
 
 /**
- * Initialize LLM and tools
+ * Initialize and export the email assistant
  */
-export const setupLLMAndTools = async () => {
+export const initializeEmailAssistant = async () => {
   // Get tools
   const tools = await getTools();
   const toolsByName = await getToolsByName(tools);
@@ -113,14 +113,8 @@ export const setupLLMAndTools = async () => {
   // Initialize the LLM for tool use
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
   
-  return { llm, llmWithTools, tools, toolsByName };
-};
-
-/**
- * Create the LLM decision node
- */
-export const createLLMCallNode = (llmWithTools: ChatModel) => {
-  return async (state: AgentStateType) => {
+  // Create the LLM call node
+  const llmCallNode = async (state: AgentStateType) => {
     /**
      * LLM decides whether to call a tool or not
      * This is the main decision-making node that generates responses or tool calls
@@ -143,13 +137,12 @@ export const createLLMCallNode = (llmWithTools: ChatModel) => {
       messages: [response as unknown as Message]
     };
   };
-};
-
-/**
- * Create the conditional edge function
- */
-export const createShouldContinueFunction = () => {
-  return (state: AgentStateType) => {
+  
+  // Create the tool node
+  const toolNode = new ToolNode(tools);
+  
+  // Conditional edge function for routing
+  const shouldContinue = (state: AgentStateType) => {
     /**
      * Route to environment for tool execution, or end if Done tool called
      * Similar to the Python version's should_continue function
@@ -169,45 +162,9 @@ export const createShouldContinueFunction = () => {
     
     return END;
   };
-};
-
-/**
- * Build the agent state graph
- */
-export const buildAgentGraph = (
-  llmCallNode: (state: AgentStateType) => Promise<{ messages: Message[] }>, 
-  toolNode: ToolNode, 
-  shouldContinue: (state: AgentStateType) => string
-) => {
-  // Build agent workflow with the builder pattern
-  const agentBuilder = new StateGraph<typeof BaseEmailAgentState, 
-    AgentStateType, 
-    Partial<AgentStateType>,
-    AgentNodes>(BaseEmailAgentState)
-    .addNode("llm_call", llmCallNode)
-    .addNode("environment", toolNode);
   
-  // Add edges to connect nodes
-  agentBuilder.addEdge(START, "llm_call");
-  agentBuilder.addConditionalEdges(
-    "llm_call",
-    shouldContinue,
-    {
-      "environment": "environment",
-      [END]: END
-    }
-  );
-  agentBuilder.addEdge("environment", "llm_call");
-  
-  // Compile the agent
-  return agentBuilder.compile();
-};
-
-/**
- * Create the triage router node
- */
-export const createTriageRouterNode = (llm: ChatModel) => {
-  return async (state: AgentStateType) => {
+  // Create the triage router node
+  const triageRouterNode = async (state: AgentStateType) => {
     /**
      * Analyze email content to decide if we should respond, notify, or ignore.
      * 
@@ -308,55 +265,48 @@ export const createTriageRouterNode = (llm: ChatModel) => {
       });
     }
   };
-};
-
-/**
- * Build the overall workflow graph
- */
-export const buildOverallWorkflow = (
-  triageRouterNode: (state: AgentStateType) => Promise<Command>,
-  agent: ReturnType<typeof buildAgentGraph>
-) => {
-  // Build overall workflow with the builder pattern
-  const overallWorkflow = new StateGraph<typeof BaseEmailAgentState, 
+  
+  // Build agent subgraph
+  const agentBuilder = new StateGraph<typeof BaseEmailAgentState, 
+    AgentStateType, 
+    Partial<AgentStateType>,
+    AgentNodes>(BaseEmailAgentState)
+    .addNode("llm_call", llmCallNode)
+    .addNode("environment", toolNode)
+    .addEdge(START, "llm_call")
+    .addConditionalEdges(
+      "llm_call",
+      shouldContinue,
+      {
+        "environment": "environment",
+        [END]: END
+      }
+    )
+    .addEdge("environment", "llm_call");
+  
+  // Compile the agent subgraph
+  const agent = agentBuilder.compile();
+  
+  // Build overall workflow
+  const emailAssistantGraph = new StateGraph<typeof BaseEmailAgentState, 
     AgentStateType, 
     Partial<AgentStateType>,
     AgentNodes>(BaseEmailAgentState)
     .addNode("triage_router", triageRouterNode, { ends: ["response_agent", END] })
-    .addNode("response_agent", agent);
+    .addNode("response_agent", agent)
+    .addEdge(START, "triage_router");
   
-  overallWorkflow.addEdge(START, "triage_router");
-  
-  // Compile the email assistant
-  return overallWorkflow.compile();
+  // Compile and return the email assistant
+  return emailAssistantGraph.compile();
 };
 
-export const createEmailAssistant = async () => {
-  // Setup LLMs and tools
-  const { llm, llmWithTools, tools } = await setupLLMAndTools();
-  
-  // Create the LLM call node
-  const llmCallNode = createLLMCallNode(llmWithTools);
-  
-  // Create the tool node
-  const toolNode = new ToolNode(tools);
-  
-  // Create the conditional edge function
-  const shouldContinue = createShouldContinueFunction();
-  
-  // Build the agent graph
-  const agent = buildAgentGraph(llmCallNode, toolNode, shouldContinue);
-  
-  // Create the triage router node
-  const triageRouterNode = createTriageRouterNode(llm);
-  
-  // Build the overall workflow
-  const emailAssistant = buildOverallWorkflow(triageRouterNode, agent);
-  
-  return emailAssistant;
-};
+// Lazily initialize the email assistant
+let emailAssistantInstance: Awaited<ReturnType<typeof initializeEmailAssistant>> | null = null;
 
 // For server-side usage
 export async function getEmailAssistant() {
-  return await createEmailAssistant();
+  if (!emailAssistantInstance) {
+    emailAssistantInstance = await initializeEmailAssistant();
+  }
+  return emailAssistantInstance;
 }
