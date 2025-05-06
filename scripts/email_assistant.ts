@@ -287,13 +287,5 @@ export const initializeEmailAssistant = async () => {
   return emailAssistantGraph.compile();
 };
 
-// Lazily initialize the email assistant
-let emailAssistantInstance: Awaited<ReturnType<typeof initializeEmailAssistant>> | null = null;
-
-// For server-side usage
-export async function getEmailAssistant() {
-  if (!emailAssistantInstance) {
-    emailAssistantInstance = await initializeEmailAssistant();
-  }
-  return emailAssistantInstance;
-}
+// Initialize and export email assistant directly - replaces getEmailAssistant
+export const emailAssistant = initializeEmailAssistant();

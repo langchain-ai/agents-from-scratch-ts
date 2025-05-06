@@ -549,14 +549,5 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
   });
 };
 
-// Lazily initialize the email assistant
-let hitlEmailAssistantInstance: Awaited<ReturnType<typeof initializeHitlEmailAssistant>> | null = null;
-
-// For server-side usage
-export async function getHitlEmailAssistant() {
-  if (!hitlEmailAssistantInstance) {
-    const checkpointer = new MemorySaver();
-    hitlEmailAssistantInstance = await initializeHitlEmailAssistant(checkpointer);
-  }
-  return hitlEmailAssistantInstance;
-} 
+// Initialize and export HITL email assistant directly with a default checkpointer
+export const hitlEmailAssistant = initializeHitlEmailAssistant(new MemorySaver()); 

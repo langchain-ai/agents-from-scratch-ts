@@ -67,7 +67,6 @@ import {
  * 
  * @exports
  * @function setupLLMAndTools - Initializes LLM and tools for the assistant
- * @function setupMemoryStore - Creates and initializes the memory store
  * @function getMemory - Retrieves memory from the store with fallback
  * @function updateMemory - Updates memory in the store based on user feedback
  * 
@@ -81,17 +80,7 @@ import {
  * @function buildOverallWorkflow - Creates the complete workflow graph with memory
  * @function createHitlEmailAssistantWithMemory - Main function to initialize the assistant
  * @function getHitlEmailAssistantWithMemory - Server-side utility function 
- * 
- * // TODO: REMOVE THIS do inline messages instead
- * // remove all instances of any 
- * // remove factory functions, wrapper functions that are unncessary 
- * // define graph function outside wrapper function, jsut export the compiled graph  
  */
-
-// Create a custom messages reducer that works with Message types
-const customMessagesReducer = (left: Message[], right: Message[]) => {
-  return [...left, ...right];
-};
 
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
@@ -163,14 +152,6 @@ export const setupLLMAndTools = async () => {
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
   
   return { llm, llmWithTools, tools, toolsByName };
-};
-
-/**
- * Set up memory store
- */
-// todo: remove this too verbose ; overusing wrapper/factory functions 
-export const setupMemoryStore = () => {
-  return new InMemoryStore();
 };
 
 /**
@@ -840,3 +821,99 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
     });
   } 
 };
+
+/**
+ * Initialize and export email assistant components
+ */
+// Set up memory store directly
+export const memoryStore = new InMemoryStore();
+
+// Initialize and export the agent graph
+export const initializeEmailAssistant = async () => {
+  // Setup LLMs and tools
+  const { llm, llmWithTools, tools, toolsByName } = await setupLLMAndTools();
+  
+  // Create the nodes
+  const triageRouterNode = createTriageRouterNode(llm, memoryStore);
+  const triageInterruptHandlerNode = createTriageInterruptHandlerNode(memoryStore);
+  const llmCallNode = createLLMCallNode(llmWithTools, memoryStore);
+  const interruptHandlerNode = createInterruptHandlerNode(toolsByName, memoryStore);
+  
+  // Build agent subgraph
+  const agentBuilder = new StateGraph(EmailAgentHITLState)
+    .addNode("llm_call", llmCallNode)
+    .addNode("interrupt_handler", interruptHandlerNode)
+    .addEdge(START, "llm_call")
+    .addConditionalEdges(
+      "llm_call",
+      shouldContinue,
+      {
+        "interrupt_handler": "interrupt_handler",
+        [END]: END
+      }
+    )
+    .addEdge("interrupt_handler", "llm_call");
+  
+  // Compile the agent with memory store
+  const responseAgent = agentBuilder.compile({
+    store: memoryStore
+  });
+  
+  // Build overall workflow
+  const emailAssistantGraph = new StateGraph(EmailAgentHITLState)
+    .addNode("triage_router", triageRouterNode)
+    .addNode("triage_interrupt_handler", triageInterruptHandlerNode)
+    .addNode("response_agent", responseAgent)
+    .addEdge(START, "triage_router")
+    // Define conditional edge from triage_router
+    .addConditionalEdges(
+      "triage_router",
+      (state) => {
+        const classification = state.classification_decision;
+        if (classification === "respond") {
+          return "response_agent";
+        } else if (classification === "notify") {
+          return "triage_interrupt_handler";
+        } else {
+          return END;
+        }
+      },
+      {
+        "response_agent": "response_agent",
+        "triage_interrupt_handler": "triage_interrupt_handler",
+        [END]: END
+      }
+    )
+    // Define conditional edge from triage_interrupt_handler
+    .addConditionalEdges(
+      "triage_interrupt_handler",
+      (state) => {
+        // We use the messages to determine where to go next
+        const messages = state.messages;
+        if (!messages || messages.length === 0) return END;
+        
+        // Look for feedback in the messages that indicates responding
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage.content && typeof lastMessage.content === 'string' && 
+            lastMessage.content.includes("User wants to reply to the email")) {
+          return "response_agent";
+        }
+        return END;
+      },
+      {
+        "response_agent": "response_agent",
+        [END]: END
+      }
+    )
+    // Add a simple edge since the response_agent already has the proper conditionals built in
+    .addEdge("response_agent", END);
+    
+  // Compile and return the email assistant
+  return emailAssistantGraph.compile({
+    store: memoryStore,
+    checkpointer: new MemorySaver()
+  });
+};
+
+// Initialize and export HITL email assistant with memory directly
+export const hitlEmailAssistantWithMemory = initializeEmailAssistant();
