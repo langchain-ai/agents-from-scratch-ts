@@ -71,19 +71,6 @@ import { HumanMessage, SystemMessage, ToolMessage, AIMessage, Message } from "@l
  * @function getEmailAssistant - Server-side utility function
  */
 
-// Create message factory functions for types
-const createSystemMessage = (content: string): SystemMessage => {
-  return { type: "system", content };
-};
-
-const createHumanMessage = (content: string): HumanMessage => {
-  return { type: "human", content };
-};
-
-const createToolMessage = (content: string, tool_call_id: string): ToolMessage => {
-  return { type: "tool", content, tool_call_id };
-};
-
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
   return message.type === "ai" && 
@@ -128,7 +115,7 @@ export const initializeEmailAssistant = async () => {
     
     // Run the LLM with the messages
     const response = await llmWithTools.invoke([
-      createSystemMessage(systemPromptContent),
+      { type: "system", content: systemPromptContent },
       ...messages
     ]);
     
@@ -206,8 +193,8 @@ export const initializeEmailAssistant = async () => {
       
       // Use the regular LLM instead of withStructuredOutput
       const response = await llm.invoke([
-        createSystemMessage(jsonSystemPrompt),
-        createHumanMessage(userPrompt)
+        { type: "system", content: jsonSystemPrompt },
+        { type: "human", content: userPrompt }
       ]);
       
       // Parse the JSON response manually
@@ -237,7 +224,7 @@ export const initializeEmailAssistant = async () => {
         goto = "response_agent";
         
         update.messages = [
-          createHumanMessage(`Respond to the email: ${emailMarkdown}`)
+          { type: "human", content: `Respond to the email: ${emailMarkdown}` }
         ];
       } else if (classification === "ignore") {
         console.log("🚫 Classification: IGNORE - This email can be safely ignored");
@@ -259,7 +246,7 @@ export const initializeEmailAssistant = async () => {
         update: {
           classification_decision: "ignore",
           messages: [
-            createSystemMessage(`Error processing email: ${error instanceof Error ? error.message : String(error)}`)
+            { type: "system", content: `Error processing email: ${error instanceof Error ? error.message : String(error)}` }
           ]
         }
       });

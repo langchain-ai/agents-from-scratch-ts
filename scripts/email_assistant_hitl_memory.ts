@@ -93,29 +93,6 @@ const customMessagesReducer = (left: Message[], right: Message[]) => {
   return [...left, ...right];
 };
 
-// TODO: REMOVE THIS do inline messages instead 
-// Create message factory functions for types
-const createSystemMessage = (content: string): SystemMessage => {
-  return { type: "system", content };
-};
-
-const createHumanMessage = (content: string): HumanMessage => {
-  return { type: "human", content };
-};
-
-const createToolMessage = (content: string, tool_call_id: string): ToolMessage => {
-  return { type: "tool", content, tool_call_id };
-};
-
-const createAIMessage = (content: string, tool_calls?: ToolCall[]): AIMessage => {
-  return { 
-    type: "ai", 
-    content, 
-    tool_calls: tool_calls || []
-  };
-};
-
-// TODO , check for 0 length array 
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
   return message.type === "ai" && 
@@ -268,29 +245,31 @@ async function updateMemory(
     });
     
     // Create system message with memory update instructions
-    const systemMsg = createSystemMessage(
-      MEMORY_UPDATE_INSTRUCTIONS.replace(
+    const systemMsg = { 
+      type: "system" as const, 
+      content: MEMORY_UPDATE_INSTRUCTIONS.replace(
         "{current_profile}", 
         currentProfile
       ).replace(
         "{namespace}",
         namespace.join("/")
       )
-    );
+    };
     
     // Create user message instructing to update memory
-    const userMsg = createHumanMessage(
-      "Think carefully and update the memory profile based upon these user messages:"
-    );
+    const userMsg = { 
+      type: "human" as const, 
+      content: "Think carefully and update the memory profile based upon these user messages:" 
+    };
     
     // Convert the formatted messages to Message objects
     const messagesForLLM = formattedMessages.map(msg => {
       if (msg.role === "user") {
-        return createHumanMessage(msg.content);
+        return { type: "human" as const, content: msg.content };
       } else if (msg.role === "assistant") {
-        return createAIMessage(msg.content);
+        return { type: "ai" as const, content: msg.content, tool_calls: [] };
       } else {
-        return createSystemMessage(msg.content);
+        return { type: "system" as const, content: msg.content };
       }
     });
     
@@ -356,8 +335,8 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
       
       // Use the regular LLM with a simplified prompt
       const response = await llm.invoke([
-        createSystemMessage(simplifiedSystemPrompt),
-        createHumanMessage(userPrompt)
+        { type: "system", content: simplifiedSystemPrompt },
+        { type: "human", content: userPrompt }
       ]);
       
       // Extract the classification from the simple response
@@ -384,7 +363,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         console.log("📧 Classification: RESPOND - This email requires a response");
         goto = "response_agent";
         update.messages = [
-          createHumanMessage(`Respond to the email: ${emailMarkdown}`)
+          { type: "human", content: `Respond to the email: ${emailMarkdown}` }
         ];
       } else if (classification === "notify") {
         console.log("🔔 Classification: NOTIFY - This email contains important information");
@@ -410,7 +389,7 @@ Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
         update: {
           classification_decision: "error",
           messages: [
-            createSystemMessage(`Error in triage router: ${error.message}`)
+            { type: "system", content: `Error in triage router: ${error.message}` }
           ]
         }
       });
@@ -439,7 +418,7 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
     try {
       // Create messages
       const messages = [
-        createHumanMessage(`Email to notify user about: ${emailMarkdown}`)
+        { type: "human" as const, content: `Email to notify user about: ${emailMarkdown}` }
       ];
       
       // Create interrupt for Agent Inbox
@@ -468,13 +447,13 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
         // User wants to respond to the email
         if (reviewData) {
           returnMessages.push(
-            createHumanMessage(`User wants to reply to the email. Use this feedback to respond: ${reviewData}`)
+            { type: "human" as const, content: `User wants to reply to the email. Use this feedback to respond: ${reviewData}` }
           );
         }
         
         // Update memory with feedback
         const memoryUpdateMessages = [
-          createHumanMessage("The user decided to respond to the email, so update the triage preferences to capture this."),
+          { type: "human" as const, content: "The user decided to respond to the email, so update the triage preferences to capture this." },
           ...returnMessages
         ];
         
@@ -488,7 +467,7 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
       } else {
         // User ignored the email or other action
         const memoryUpdateMessages = [
-          createHumanMessage("The user decided to ignore the email even though it was classified as notify. Update triage preferences to capture this."),
+          { type: "human" as const, content: "The user decided to ignore the email even though it was classified as notify. Update triage preferences to capture this." },
           ...returnMessages
         ];
         
@@ -515,7 +494,7 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
         goto: END,
         update: {
           messages: [
-            createSystemMessage(`Error in triage interrupt: ${error.message}`)
+            { type: "system" as const, content: `Error in triage interrupt: ${error.message}` }
           ]
         }
       });
@@ -551,7 +530,7 @@ export const createLLMCallNode = (llmWithTools: ChatModel, store: InMemoryStore)
         
       // Create full message history for the agent
       const allMessages = [
-        createSystemMessage(systemPrompt),
+        { type: "system" as const, content: systemPrompt },
         ...state.messages
       ];
       
@@ -566,7 +545,7 @@ export const createLLMCallNode = (llmWithTools: ChatModel, store: InMemoryStore)
       console.error("Error in LLM call:", error);
       return {
         messages: [
-          createAIMessage(`Error calling model: ${error.message}`)
+          { type: "ai" as const, content: `Error calling model: ${error.message}`, tool_calls: [] }
         ]
       };
     }
@@ -619,7 +598,7 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
         const tool = toolsByName[toolCall.name];
         if (!tool) {
           console.error(`Tool ${toolCall.name} not found`);
-          result.push(createToolMessage(`Error: Tool ${toolCall.name} not found`, callId));
+          result.push({ type: "tool", content: `Error: Tool ${toolCall.name} not found`, tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           continue;
@@ -633,12 +612,12 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
             
           // Invoke the tool with properly formatted arguments
           const observation = await tool.invoke(parsedArgs);
-          result.push(createToolMessage(observation, callId));
+          result.push({ type: "tool", content: observation, tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         } catch (error: any) {
           console.error(`Error executing tool ${toolCall.name}:`, error);
-          result.push(createToolMessage(`Error executing tool: ${error.message}`, callId));
+          result.push({ type: "tool", content: `Error executing tool: ${error.message}`, tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         }
@@ -690,7 +669,11 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
             : toolCall.args;
             
           const observation = await tool.invoke(parsedArgs);
-          result.push(createToolMessage(observation, callId));
+          result.push({
+            type: "tool",
+            content: observation,
+            tool_call_id: callId
+          });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         } 
@@ -722,7 +705,11 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
           const observation = await tool.invoke(editedArgs);
           
           // Add the tool response
-          result.push(createToolMessage(observation, callId));
+          result.push({
+            type: "tool",
+            content: observation,
+            tool_call_id: callId
+          });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           
@@ -732,7 +719,10 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
               store,
               ["email_assistant", "response_preferences"],
               [
-                createHumanMessage(`User edited the email response. Here is the initial email generated by the assistant: ${initialToolCall}. Here is the edited email: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
+                {
+                  type: "human",
+                  content: `User edited the email response. Here is the initial email generated by the assistant: ${initialToolCall}. Here is the edited email: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
+                }
               ]
             );
           } else if (toolCall.name === "schedule_meeting") {
@@ -740,7 +730,10 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
               store,
               ["email_assistant", "cal_preferences"],
               [
-                createHumanMessage(`User edited the calendar invitation. Here is the initial calendar invitation generated by the assistant: ${initialToolCall}. Here is the edited calendar invitation: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
+                {
+                  type: "human",
+                  content: `User edited the calendar invitation. Here is the initial calendar invitation generated by the assistant: ${initialToolCall}. Here is the edited calendar invitation: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
+                }
               ]
             );
           }
@@ -748,7 +741,11 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
         else if (reviewAction === "ignore") {
           if (toolCall.name === "write_email") {
             // Don't execute the tool, and tell the agent how to proceed
-            result.push(createToolMessage("User ignored this email draft. Ignore this email and end the workflow.", callId));
+            result.push({
+              type: "tool",
+              content: "User ignored this email draft. Ignore this email and end the workflow.",
+              tool_call_id: callId
+            });
             processedToolCallIds.add(callId);
             processedOneToolCall = true;
             
@@ -762,12 +759,19 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
               [
                 ...state.messages,
                 ...result,
-                createHumanMessage(`The user ignored the email draft. That means they did not want to respond to the email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
+                {
+                  type: "human",
+                  content: `The user ignored the email draft. That means they did not want to respond to the email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
+                }
               ]
             );
           } else if (toolCall.name === "schedule_meeting") {
             // Don't execute the tool, and tell the agent how to proceed
-            result.push(createToolMessage("User ignored this calendar meeting draft. Ignore this email and end the workflow.", callId));
+            result.push({
+              type: "tool",
+              content: "User ignored this calendar meeting draft. Ignore this email and end the workflow.",
+              tool_call_id: callId
+            });
             processedToolCallIds.add(callId);
             processedOneToolCall = true;
             
@@ -781,12 +785,19 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
               [
                 ...state.messages,
                 ...result,
-                createHumanMessage(`The user ignored the calendar meeting draft. That means they did not want to schedule a meeting for this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
+                {
+                  type: "human",
+                  content: `The user ignored the calendar meeting draft. That means they did not want to schedule a meeting for this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
+                }
               ]
             );
           } else if (toolCall.name === "Question") {
             // Don't execute the tool, and tell the agent how to proceed
-            result.push(createToolMessage("User ignored this question. Ignore this email and end the workflow.", callId));
+            result.push({
+              type: "tool",
+              content: "User ignored this question. Ignore this email and end the workflow.",
+              tool_call_id: callId
+            });
             processedToolCallIds.add(callId);
             processedOneToolCall = true;
             
@@ -800,205 +811,32 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
               [
                 ...state.messages,
                 ...result,
-                createHumanMessage(`The user ignored the Question. That means they did not want to answer the question or deal with this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
+                {
+                  type: "human",
+                  content: `The user ignored the Question. That means they did not want to answer the question or deal with this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`
+                }
               ]
             );
           }
-        }
-        else if (reviewAction === "feedback") {
-          // User provided feedback
-          const userFeedback = reviewData || "No specific feedback provided";
-          
-          if (toolCall.name === "write_email") {
-            // Don't execute the tool, and add a message with the user feedback to incorporate into the email
-            result.push(createToolMessage(`User gave feedback, which can we incorporate into the email. Feedback: ${userFeedback}`, callId));
-            processedToolCallIds.add(callId);
-            processedOneToolCall = true;
-            
-            // Update memory with feedback
-            await updateMemory(
-              store,
-              ["email_assistant", "response_preferences"],
-              [
-                ...state.messages,
-                ...result,
-                createHumanMessage(`User gave feedback, which we can use to update the response preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
-              ]
-            );
-          } else if (toolCall.name === "schedule_meeting") {
-            // Don't execute the tool, and add a message with the user feedback to incorporate into the meeting request
-            result.push(createToolMessage(`User gave feedback, which can we incorporate into the meeting request. Feedback: ${userFeedback}`, callId));
-            processedToolCallIds.add(callId);
-            processedOneToolCall = true;
-            
-            // Update memory with feedback
-            await updateMemory(
-              store,
-              ["email_assistant", "cal_preferences"],
-              [
-                ...state.messages,
-                ...result,
-                createHumanMessage(`User gave feedback, which we can use to update the calendar preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`)
-              ]
-            );
-          } else if (toolCall.name === "Question") {
-            // Don't execute the tool, add user answer
-            result.push(createToolMessage(`User answered the question, which can we can use for any follow up actions. Feedback: ${userFeedback}`, callId));
-            processedToolCallIds.add(callId);
-            processedOneToolCall = true;
-          }
-        }
-        else {
-          // Handle any other action with a default response
-          result.push(createToolMessage("Action not recognized or canceled by user.", callId));
-          processedToolCallIds.add(callId);
-          processedOneToolCall = true;
         }
       } catch (error: any) {
-        // Very important: Just rethrow any GraphInterrupt error without modifying it
-        // This ensures LangGraph can properly handle the interruption
-        if (error.name === 'GraphInterrupt' || 
-            (error.message && typeof error.message === 'string' && 
-             error.message.includes('GraphInterrupt'))) {
-          throw error;
-        }
-        
-        console.error("Error with interrupt handler:", error);
-        // For other errors, provide a message response
-        result.push(createToolMessage(`Error during tool execution: ${error.message}`, callId));
+        console.error(`Error processing tool ${toolCall.name}:`, error);
+        result.push({
+          type: "tool",
+          content: `Error processing tool: ${error.message}`,
+          tool_call_id: callId
+        });
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
       }
     }
     
-    // Return the Command with goto and update
+    // Return Command with goto and update
     return new Command({
       goto,
-      update: { messages: result }
+      update: {
+        messages: result
+      }
     });
-  };
+  } 
 };
-
-/**
- * Create conditional edge function for routing
- */
-const shouldContinue = (state: AgentStateType) => {
-  const messages = state.messages;
-  if (!messages || messages.length === 0) return END;
-  
-  const lastMessage = messages[messages.length - 1];
-  
-  if (hasToolCalls(lastMessage) && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
-    // Check if any tool call is the "Done" tool
-    if (lastMessage.tool_calls.some((toolCall: ToolCall) => toolCall.name === "Done")) {
-      return END;
-    }
-    return "interrupt_handler";
-  }
-  
-  return END;
-};
-
-/**
- * Initialize and export email assistant components
- */
-// Set up memory store
-export const memoryStore = new InMemoryStore();
-
-// Initialize and export the agent graph
-export const initializeEmailAssistant = async () => {
-  // Setup LLMs and tools
-  const { llm, llmWithTools, tools, toolsByName } = await setupLLMAndTools();
-  
-  // Create the nodes
-  const triageRouterNode = createTriageRouterNode(llm, memoryStore);
-  const triageInterruptHandlerNode = createTriageInterruptHandlerNode(memoryStore);
-  const llmCallNode = createLLMCallNode(llmWithTools, memoryStore);
-  const interruptHandlerNode = createInterruptHandlerNode(toolsByName, memoryStore);
-  
-  // Build agent subgraph
-  const agentBuilder = new StateGraph(EmailAgentHITLState)
-    .addNode("llm_call", llmCallNode)
-    .addNode("interrupt_handler", interruptHandlerNode)
-    .addEdge(START, "llm_call")
-    .addConditionalEdges(
-      "llm_call",
-      shouldContinue,
-      {
-        "interrupt_handler": "interrupt_handler",
-        [END]: END
-      }
-    )
-    .addEdge("interrupt_handler", "llm_call");
-  
-  // Compile the agent with memory store
-  const responseAgent = agentBuilder.compile({
-    store: memoryStore
-  });
-  
-  // Build overall workflow
-  const emailAssistantGraph = new StateGraph(EmailAgentHITLState)
-    .addNode("triage_router", triageRouterNode)
-    .addNode("triage_interrupt_handler", triageInterruptHandlerNode)
-    .addNode("response_agent", responseAgent)
-    .addEdge(START, "triage_router")
-    // Define conditional edge from triage_router
-    .addConditionalEdges(
-      "triage_router",
-      (state) => {
-        const classification = state.classification_decision;
-        if (classification === "respond") {
-          return "response_agent";
-        } else if (classification === "notify") {
-          return "triage_interrupt_handler";
-        } else {
-          return END;
-        }
-      },
-      {
-        "response_agent": "response_agent",
-        "triage_interrupt_handler": "triage_interrupt_handler",
-        [END]: END
-      }
-    )
-    // Define conditional edge from triage_interrupt_handler
-    .addConditionalEdges(
-      "triage_interrupt_handler",
-      (state) => {
-        // We use the messages to determine where to go next
-        const messages = state.messages;
-        if (!messages || messages.length === 0) return END;
-        
-        // Look for feedback in the messages that indicates responding
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage.content && typeof lastMessage.content === 'string' && 
-            lastMessage.content.includes("User wants to reply to the email")) {
-          return "response_agent";
-        }
-        return END;
-      },
-      {
-        "response_agent": "response_agent",
-        [END]: END
-      }
-    )
-    // Add a simple edge since the response_agent already has the proper conditionals built in
-    .addEdge("response_agent", END);
-    
-  // Compile and return the email assistant
-  return emailAssistantGraph.compile({
-    store: memoryStore,
-    checkpointer: new MemorySaver()
-  });
-};
-
-// Lazily initialize the email assistant
-let emailAssistantInstance: Awaited<ReturnType<typeof initializeEmailAssistant>> | null = null;
-
-// For server-side usage
-export async function getHitlEmailAssistantWithMemory() {
-  if (!emailAssistantInstance) {
-    emailAssistantInstance = await initializeEmailAssistant();
-  }
-  return emailAssistantInstance;
-} 

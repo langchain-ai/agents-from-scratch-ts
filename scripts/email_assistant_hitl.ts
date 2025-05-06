@@ -78,27 +78,6 @@ import {
  * @function getHitlEmailAssistant - Server-side utility function
  */
 
-// Create message factory functions for types
-const createSystemMessage = (content: string): SystemMessage => {
-  return { type: "system", content };
-};
-
-const createHumanMessage = (content: string): HumanMessage => {
-  return { type: "human", content };
-};
-
-const createToolMessage = (content: string, tool_call_id: string): ToolMessage => {
-  return { type: "tool", content, tool_call_id };
-};
-
-const createAIMessage = (content: string, tool_calls?: ToolCall[]): AIMessage => {
-  return { 
-    type: "ai", 
-    content, 
-    tool_calls: tool_calls || []
-  };
-};
-
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
   return message.type === "ai" && 
@@ -138,7 +117,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
       
     // Create full message history for the agent
     const allMessages = [
-      createSystemMessage(systemPrompt),
+      { type: "system", content: systemPrompt },
       ...messages
     ];
     
@@ -194,7 +173,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
         const tool = toolsByName[toolCall.name];
         if (!tool) {
           console.error(`Tool ${toolCall.name} not found`);
-          result.push(createToolMessage(`Error: Tool ${toolCall.name} not found`, callId));
+          result.push({ type: "tool", content: `Error: Tool ${toolCall.name} not found`, tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           continue;
@@ -208,12 +187,12 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
             
           // Invoke the tool with properly formatted arguments
           const observation = await tool.invoke(parsedArgs);
-          result.push(createToolMessage(observation, callId));
+          result.push({ type: "tool", content: observation, tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         } catch (error: any) {
           console.error(`Error executing tool ${toolCall.name}:`, error);
-          result.push(createToolMessage(`Error executing tool: ${error.message}`, callId));
+          result.push({ type: "tool", content: `Error executing tool: ${error.message}`, tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         }
@@ -257,7 +236,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
             : toolCall.args;
             
           const observation = await tool.invoke(parsedArgs);
-          result.push(createToolMessage(observation, callId));
+          result.push({ type: "tool", content: observation, tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         } 
@@ -270,27 +249,27 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
             : reviewData;
             
           const observation = await tool.invoke(updatedArgs);
-          result.push(createToolMessage(observation, callId));
+          result.push({ type: "tool", content: observation, tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         }
         else if (reviewAction === "feedback") {
           // Add feedback as a tool message
-          result.push(createToolMessage(reviewData, callId));
+          result.push({ type: "tool", content: reviewData, tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           goto = "llm_call";
         }
         else if (reviewAction === "stop") {
           // Even when stopping, we still need to respond to the tool call
-          result.push(createToolMessage("User chose to stop this action.", callId));
+          result.push({ type: "tool", content: "User chose to stop this action.", tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           goto = END;
         }
         else {
           // Handle any other action by providing a default response
-          result.push(createToolMessage("Action not recognized or canceled by user.", callId));
+          result.push({ type: "tool", content: "Action not recognized or canceled by user.", tool_call_id: callId });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
           goto = END;
@@ -306,7 +285,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
         
         console.error("Error with interrupt handler:", error);
         // For other errors, provide a message response
-        result.push(createToolMessage(`Error during tool execution: ${error.message}`, callId));
+        result.push({ type: "tool", content: `Error during tool execution: ${error.message}`, tool_call_id: callId });
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
       }
@@ -327,7 +306,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
       if (!processedToolCallIds.has(callId)) {
         // We've skipped this tool call, but we still need to respond to it
         // This is important for OpenAI's API requirement that every tool call has a response
-        result.push(createToolMessage("Tool execution pending human review.", callId));
+        result.push({ type: "tool", content: "Tool execution pending human review.", tool_call_id: callId });
       }
     });
     
@@ -391,8 +370,8 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
       
       // Use the regular LLM instead of withStructuredOutput
       const response = await llm.invoke([
-        createSystemMessage(jsonSystemPrompt),
-        createHumanMessage(userPrompt)
+        { type: "system", content: jsonSystemPrompt },
+        { type: "human", content: userPrompt }
       ]);
       
       // Parse the JSON response manually
@@ -420,7 +399,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
       
       // Create message
       update.messages = [
-        createHumanMessage(`Email to review: ${emailMarkdown}`)
+        { type: "human", content: `Email to review: ${emailMarkdown}` }
       ];
       
       if (classification === "respond") {
@@ -449,7 +428,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
         update: {
           classification_decision: "error",
           messages: [
-            createSystemMessage(`Error in triage router: ${error.message}`)
+            { type: "system", content: `Error in triage router: ${error.message}` }
           ]
         }
       });
@@ -482,7 +461,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
       
       let goto: "response_agent" | typeof END = END;
       const messages = [
-        createHumanMessage(`Email to review: ${emailMarkdown}`)
+        { type: "human", content: `Email to review: ${emailMarkdown}` }
       ];
       
       // Handle different response types
@@ -494,7 +473,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
         goto = "response_agent";
       } else if (reviewAction === "feedback") {
         // Human provided feedback or instructions on how to handle
-        messages.push(createHumanMessage(reviewData));
+        messages.push({ type: "human", content: reviewData });
         goto = "response_agent";
       } else {
         // Default to END for other actions
@@ -514,7 +493,7 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
         goto: END,
         update: {
           messages: [
-            createSystemMessage(`Error in triage interrupt: ${error}`)
+            { type: "system", content: `Error in triage interrupt: ${error}` }
           ]
         }
       });
