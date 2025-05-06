@@ -1,3 +1,19 @@
+/**
+ * Memory functionality tests
+ * 
+ * Tests the agent's ability to store, retrieve, and use memory for personalization
+ * 
+ * Test cases:
+ * - Accept flow without memory updates: Verifies simple accepts don't modify user preferences
+ * - Memory updates based on edit with feedback: Tests how editing with feedback updates stored preferences
+ * - Memory affects subsequent emails: Tests that stored preferences influence future interactions
+ * 
+ * Key concepts:
+ * - TestInMemoryStore: Custom store implementation that simulates memory updates
+ * - User preferences: Stored preferences for different aspects (calendar, response style)
+ * - Memory persistence: Verifying memory is maintained between interactions
+ * - Memory application: Testing preferences are properly applied to new interactions
+ */
 import { describe, test, expect, beforeAll } from '@jest/globals';
 import { Command } from '@langchain/langgraph';
 

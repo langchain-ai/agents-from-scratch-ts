@@ -1,3 +1,12 @@
+/**
+ * Test utilities for the Email Assistant test suite
+ * 
+ * This module provides:
+ * - Mock data (emails, criteria, expected tool calls)
+ * - Utility functions for testing email assistant behavior
+ * - Custom InMemoryStore implementation for memory testing
+ * - Mock assistant factory with configurable behavior
+ */
 import { v4 as uuidv4 } from 'uuid';
 import { MemorySaver, Command, InMemoryStore } from '@langchain/langgraph';
 import { z } from 'zod';

@@ -1,3 +1,18 @@
+/**
+ * Human-in-the-Loop (HITL) functionality tests
+ * 
+ * Tests the interactions where human approval is required for agent actions
+ * 
+ * Test cases:
+ * - Accept write_email and schedule_meeting flow: Tests the basic approval flow when a user accepts all agent actions
+ * - Edit tool call parameters: Tests the functionality of editing tool call parameters (meeting duration, time)
+ * - Reject tool call with feedback: Tests rejecting a proposed action with feedback and ensuring the agent adapts
+ * 
+ * Key concepts:
+ * - Action requests/interrupts: Points where the agent pauses for human approval
+ * - Command resume: How the flow is continued after human intervention
+ * - Tool call verification: Checking the correct tools are called with appropriate parameters
+ */
 import { describe, test, expect, beforeAll } from '@jest/globals';
 import { Command } from '@langchain/langgraph';
 
