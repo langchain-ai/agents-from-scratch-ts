@@ -7,6 +7,8 @@ import {
   START, 
   END,
   Command,
+  MemorySaver,
+  InMemoryStore
 } from "@langchain/langgraph";
 import { ToolCall } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
@@ -592,14 +594,14 @@ export const buildOverallWorkflow = (triageRouterNode: any, triageInterruptHandl
   overallWorkflow.addEdge("response_agent", END);
   
   // Compile the email assistant
-  return overallWorkflow.compile();
+  return overallWorkflow;
 };
 
 /**
  * Create the Human-in-the-Loop Email Assistant
  * Mirrors the Python implementation in email_assistant_hitl.py
  */
-export const createHitlEmailAssistant = async () => {
+export const createHitlEmailAssistant = async (checkpointer?: MemorySaver) => {
   // Setup LLMs and tools
   const { llm, llmWithTools, tools, toolsByName } = await setupLLMAndTools();
   
@@ -622,12 +624,21 @@ export const createHitlEmailAssistant = async () => {
   const triageInterruptHandlerNode = createTriageInterruptHandlerNode();
   
   // Build the overall workflow
-  const hitlEmailAssistant = buildOverallWorkflow(triageRouterNode, triageInterruptHandlerNode, responseAgent);
+  const workflow = buildOverallWorkflow(triageRouterNode, triageInterruptHandlerNode, responseAgent);
   
-  return hitlEmailAssistant;
+  // Use provided checkpointer or create a new one
+  const actualCheckpointer = checkpointer || new MemorySaver();
+  
+  console.log("Compiling HITL email assistant with checkpointer:", actualCheckpointer ? "provided" : "default");
+  
+  // Compile the email assistant with the checkpointer
+  return workflow.compile({
+    checkpointer: actualCheckpointer
+  });
 };
 
 // For server-side usage
 export async function getHitlEmailAssistant() {
-  return await createHitlEmailAssistant();
+  const checkpointer = new MemorySaver();
+  return await createHitlEmailAssistant(checkpointer);
 } 

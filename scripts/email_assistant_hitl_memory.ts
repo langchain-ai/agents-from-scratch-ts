@@ -8,7 +8,8 @@ import {
   END,
   Command,
   MemorySaver,
-  InMemoryStore
+  InMemoryStore,
+  BaseStore
 } from "@langchain/langgraph";
 import { ToolCall } from "@langchain/core/messages/tool";
 import { isToolMessage } from "@langchain/core/messages/tool";
@@ -67,15 +68,22 @@ import {
  * @function setupMemoryStore - Creates and initializes the memory store
  * @function getMemory - Retrieves memory from the store with fallback
  * @function updateMemory - Updates memory in the store based on user feedback
+ * 
  * @function createTriageRouterNode - Implements email triage logic with memory
  * @function createTriageInterruptHandlerNode - Handles human review for triage with memory updates
  * @function createLLMCallNode - Creates the LLM node with memory integration
  * @function createInterruptHandlerNode - Creates the interrupt handler with memory updates
+ * 
  * @function createShouldContinueFunction - Provides conditional routing logic
  * @function buildAgentGraph - Constructs the agent state graph
  * @function buildOverallWorkflow - Creates the complete workflow graph with memory
  * @function createHitlEmailAssistantWithMemory - Main function to initialize the assistant
- * @function getHitlEmailAssistantWithMemory - Server-side utility function
+ * @function getHitlEmailAssistantWithMemory - Server-side utility function 
+ * 
+ * // TODO: REMOVE THIS do inline messages instead
+ * // remove all instances of any 
+ * // remove factory functions, wrapper functions that are unncessary 
+ * // define graph function outside wrapper function, jsut export the compiled graph  
  */
 
 // Create a custom messages reducer that works with Message types
@@ -83,6 +91,7 @@ const customMessagesReducer = (left: Message[], right: Message[]) => {
   return [...left, ...right];
 };
 
+// TODO: REMOVE THIS do inline messages instead 
 // Create message factory functions for types
 const createSystemMessage = (content: string): SystemMessage => {
   return { type: "system", content, additional_kwargs: {} } as SystemMessage;
@@ -105,6 +114,7 @@ const createAIMessage = (content: string, tool_calls?: ToolCall[]): AIMessage =>
   } as AIMessage;
 };
 
+// TODO , check for 0 length array 
 // Helper for type checking
 const hasToolCalls = (message: Message): message is AIMessage & { tool_calls: ToolCall[] } => {
   return message.type === "ai" && 
@@ -180,6 +190,7 @@ export const setupLLMAndTools = async () => {
 /**
  * Set up memory store
  */
+// todo: remove this too verbose ; overusing wrapper/factory functions 
 export const setupMemoryStore = () => {
   return new InMemoryStore();
 };
@@ -193,7 +204,7 @@ export const setupMemoryStore = () => {
  * @returns The content of the memory profile, either from existing memory or the default
  */
 async function getMemory(
-  store: InMemoryStore,
+  store: BaseStore,
   namespace: string[],
   defaultContent: string = ""
 ): Promise<string> {
@@ -870,6 +881,7 @@ export const createInterruptHandlerNode = (toolsByName: any, store: InMemoryStor
 /**
  * Create conditional edge function for routing
  */
+// TODO : remove factory function, just defined 
 export const createShouldContinueFunction = () => {
   return (state: AgentStateType) => {
     const messages = state.messages;
@@ -892,17 +904,10 @@ export const createShouldContinueFunction = () => {
 /**
  * Build the agent state graph with memory integration
  */
-export const buildAgentGraph = (
-  llmCallNode: any, 
-  interruptHandlerNode: any, 
-  shouldContinue: any, 
-  store: InMemoryStore
-) => {
+// TODO just export the state graph 
+
   // Build agent workflow with the builder pattern
-  const agentBuilder = new StateGraph<typeof EmailAgentHITLState, 
-    AgentStateType, 
-    Partial<AgentStateType>,
-    AgentNodes>(EmailAgentHITLState)
+  const agentBuilder = new StateGraph(EmailAgentHITLState)
     .addNode("llm_call", llmCallNode)
     .addNode("interrupt_handler", interruptHandlerNode);
   
@@ -911,6 +916,7 @@ export const buildAgentGraph = (
   agentBuilder.addConditionalEdges(
     "llm_call",
     shouldContinue,
+    // TODO: list of actual node names, not
     {
       "interrupt_handler": "interrupt_handler",
       [END]: END
@@ -919,10 +925,10 @@ export const buildAgentGraph = (
   agentBuilder.addEdge("interrupt_handler", "llm_call");
   
   // Compile the agent with memory store
-  return agentBuilder.compile({
-    store: store
+  export const agentGraph = agentBuilder.compile({
+    store: new InMemoryStore()
   });
-};
+
 
 /**
  * Build the overall workflow graph with memory integration
@@ -934,10 +940,8 @@ export const buildOverallWorkflow = (
   store: InMemoryStore
 ) => {
   // Build overall workflow with the builder pattern
-  const overallWorkflow = new StateGraph<typeof EmailAgentHITLState, 
-    AgentStateType, 
-    Partial<AgentStateType>,
-    AgentNodes>(EmailAgentHITLState)
+  const overallWorkflow = new StateGraph 
+    (EmailAgentHITLState)
     .addNode("triage_router", triageRouterNode)
     .addNode("triage_interrupt_handler", triageInterruptHandlerNode)
     .addNode("response_agent", responseAgent);
