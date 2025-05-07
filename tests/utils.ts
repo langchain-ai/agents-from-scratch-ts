@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { MemorySaver, Command, InMemoryStore } from '@langchain/langgraph';
 import { z } from 'zod';
 
-import { extractToolCalls, formatMessagesString } from '../../lib/utils.js';
+import { extractToolCalls, formatMessagesString } from '../lib/utils.js';
 
 // Define EmailData interface directly instead of importing
 export interface EmailData {

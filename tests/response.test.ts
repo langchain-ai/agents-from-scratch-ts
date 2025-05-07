@@ -29,7 +29,7 @@ import {
   expectedToolCalls,
   evaluateResponseCriteria,
   EmailData
-} from './utils/test-utils.js';
+} from './utils.js';
 import { extractToolCalls, formatMessagesString } from '../lib/utils.js';
 
 /**

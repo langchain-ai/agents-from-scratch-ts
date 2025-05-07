@@ -23,7 +23,7 @@ import {
   createThreadConfig,
   testEmails,
   collectStream
-} from './utils/test-utils.js';
+} from './utils.js';
 
 // Set module to HITL version for these tests
 setAgentModule(process.env.AGENT_MODULE || "email_assistant_hitl");

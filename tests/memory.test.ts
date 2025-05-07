@@ -26,7 +26,7 @@ import {
   collectStream,
   displayMemoryContent,
   TestInMemoryStore
-} from './utils/test-utils.js';
+} from './utils.js';
 
 // Set module to HITL+Memory version for these tests
 setAgentModule(process.env.AGENT_MODULE || "email_assistant_hitl_memory");
