@@ -30,7 +30,7 @@ import {
   evaluateResponseCriteria,
   EmailData
 } from './utils.js';
-import { extractToolCalls, formatMessagesString } from '../lib/utils.js';
+import { extractToolCalls, formatMessagesString } from '../src/utils.js';
 
 /**
  * Test utilities for the Email Assistant test suite

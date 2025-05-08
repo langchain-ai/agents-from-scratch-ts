@@ -63,7 +63,7 @@ import "@langchain/langgraph/zod";
 import {
   getTools,
   getToolsByName
-} from "../lib/tools/base.js";
+} from "../tools/base.js";
 import {
   HITL_TOOLS_PROMPT,
   triageSystemPrompt,
@@ -73,7 +73,7 @@ import {
   defaultResponsePreferences,
   defaultCalPreferences,
   defaultTriageInstructions
-} from "../lib/prompts.js";
+} from "../prompts.js";
 import {
   RouterSchema,
   RouterOutput,
@@ -82,12 +82,12 @@ import {
   State,
   EmailAgentHITLState,
   EmailAgentHITLStateType
-} from "../lib/schemas.js";
+} from "../schemas.js";
 import {
   parseEmail,
   formatEmailMarkdown,
   formatForDisplay
-} from "../lib/utils.js";
+} from "../utils.js";
 
 // Message Types from LangGraph SDK
 import { 
