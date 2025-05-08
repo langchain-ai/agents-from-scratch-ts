@@ -70,6 +70,7 @@ import { parseEmail, formatEmailMarkdown, formatForDisplay } from "../utils.js";
 
 // Message Types from LangGraph SDK
 import { AIMessage, Message } from "@langchain/langgraph-sdk";
+import { BaseMessageLike, HumanMessage } from "@langchain/core/messages";
 
 // Helper for type checking
 const hasToolCalls = (
@@ -83,7 +84,7 @@ const hasToolCalls = (
 };
 
 // Define proper TypeScript types for our state
-type AgentStateType = EmailAgentHITLStateType;
+type MessagesState = EmailAgentHITLStateType;
 // Define node names as a union type for better type safety
 type AgentNodes =
   | typeof START
@@ -108,11 +109,11 @@ export const initializeHitlEmailAssistant = async (
   const llm = await initChatModel("openai:gpt-4");
 
   // Initialize the LLM instance for tool use
-  const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
+  const llmWithTools = llm.bindTools(tools, { toolChoice: "required" },);
 
   // Create the LLM call node
   const llmCallNode = async (
-    state: AgentStateType,
+    state: MessagesState,
   ): Promise<{ messages: Message[] }> => {
     const { messages } = state;
 
@@ -130,7 +131,7 @@ export const initializeHitlEmailAssistant = async (
     ];
 
     // Run the LLM with the messages
-    const result = await llmWithTools.invoke(allMessages);
+    const result = await llmWithTools.invoke(allMessages as BaseMessageLike[]);
 
     // Return the AIMessage result - need to cast through unknown since the types don't have proper overlap
     return {
@@ -140,7 +141,7 @@ export const initializeHitlEmailAssistant = async (
 
   // Create the interrupt handler node for human review
   const interruptHandlerNode = async (
-    state: AgentStateType,
+    state: MessagesState,
   ): Promise<Command> => {
     // Store messages to be returned
     const result: Message[] = [];
@@ -242,7 +243,7 @@ export const initializeHitlEmailAssistant = async (
       );
 
       // Format tool call for display
-      const toolDisplay = formatForDisplay(state, toolCall);
+      const toolDisplay = formatForDisplay(toolCall);
       const description = originalEmailMarkdown + toolDisplay;
 
       try {
@@ -379,7 +380,7 @@ export const initializeHitlEmailAssistant = async (
   };
 
   // Conditional routing function
-  const shouldContinue = (state: AgentStateType) => {
+  const shouldContinue = (state: MessagesState) => {
     const messages = state.messages;
     if (!messages || messages.length === 0) return END;
 
@@ -401,7 +402,7 @@ export const initializeHitlEmailAssistant = async (
   };
 
   // Create the triage router node
-  const triageRouterNode = async (state: AgentStateType) => {
+  const triageRouterNode = async (state: MessagesState) => {
     try {
       const { email_input } = state;
       const parseResult = parseEmail(email_input);
@@ -468,13 +469,13 @@ export const initializeHitlEmailAssistant = async (
 
       let goto: "triage_interrupt_handler" | "response_agent" | typeof END =
         END;
-      let update: Partial<AgentStateType> = {
+      let update: Partial<MessagesState> = {
         classification_decision: classification,
       };
 
       // Create message
       update.messages = [
-        { type: "human", content: `Email to review: ${emailMarkdown}` },
+        new HumanMessage({ content: `Email to review: ${emailMarkdown}` }),
       ];
 
       if (classification === "respond") {
@@ -520,7 +521,7 @@ export const initializeHitlEmailAssistant = async (
   };
 
   // Create the triage interrupt handler node
-  const triageInterruptHandlerNode = async (state: AgentStateType) => {
+  const triageInterruptHandlerNode = async (state: MessagesState) => {
     // Parse the email input
     const parseResult = parseEmail(state.email_input);
 
@@ -587,8 +588,8 @@ export const initializeHitlEmailAssistant = async (
   // Build agent subgraph
   const agentBuilder = new StateGraph<
     typeof EmailAgentHITLState,
-    AgentStateType,
-    Partial<AgentStateType>,
+    MessagesState,
+    Partial<MessagesState>,
     AgentNodes
   >(EmailAgentHITLState)
     .addNode("llm_call", llmCallNode)
@@ -606,8 +607,8 @@ export const initializeHitlEmailAssistant = async (
   // Build overall workflow
   const emailAssistantGraph = new StateGraph<
     typeof EmailAgentHITLState,
-    AgentStateType,
-    Partial<AgentStateType>,
+    MessagesState,
+    Partial<MessagesState>,
     AgentNodes
   >(EmailAgentHITLState)
     .addNode("triage_router", triageRouterNode, {
