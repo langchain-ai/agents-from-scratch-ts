@@ -47,6 +47,7 @@ import {
   END,
   Command,
   MemorySaver,
+  interrupt,
 } from "@langchain/langgraph";
 import { ToolCall } from "@langchain/core/messages/tool";
 
@@ -54,7 +55,7 @@ import { ToolCall } from "@langchain/core/messages/tool";
 import "@langchain/langgraph/zod";
 
 // LOCAL IMPORTS
-import { getTools, getToolsByName } from "../tools/base.js";
+import { getTools, getToolsByName } from "./tools/base.js";
 import {
   HITL_TOOLS_PROMPT,
   triageSystemPrompt,
@@ -64,43 +65,36 @@ import {
   defaultResponsePreferences,
   defaultCalPreferences,
   defaultTriageInstructions,
-} from "../prompts.js";
-import { EmailAgentHITLState, EmailAgentHITLStateType } from "../schemas.js";
-import { parseEmail, formatEmailMarkdown, formatForDisplay } from "../utils.js";
+} from "./prompts.js";
+import { EmailAgentHITLState, EmailAgentHITLStateType } from "./schemas.js";
+import { parseEmail, formatEmailMarkdown, formatForDisplay } from "./utils.js";
 
 // Message Types from LangGraph SDK
-import { AIMessage, Message } from "@langchain/langgraph-sdk";
-import { BaseMessageLike, HumanMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  BaseMessage,
+  BaseMessageLike,
+  HumanMessage,
+} from "@langchain/core/messages";
+import { HumanInterrupt, HumanResponse } from "@langchain/langgraph/prebuilt";
+import { z } from "zod";
 
 // Helper for type checking
 const hasToolCalls = (
-  message: Message,
+  message: BaseMessage,
 ): message is AIMessage & { tool_calls: ToolCall[] } => {
   return (
-    message.type === "ai" &&
+    message.getType() === "ai" &&
     "tool_calls" in message &&
-    Array.isArray(message.tool_calls)
+    Array.isArray(message.tool_calls) &&
+    message.tool_calls.length > 0
   );
 };
-
-// Define proper TypeScript types for our state
-type MessagesState = EmailAgentHITLStateType;
-// Define node names as a union type for better type safety
-type AgentNodes =
-  | typeof START
-  | typeof END
-  | "llm_call"
-  | "interrupt_handler"
-  | "triage_router"
-  | "triage_interrupt_handler"
-  | "response_agent";
 
 /**
  * Initialize and export the HITL email assistant
  */
-export const initializeHitlEmailAssistant = async (
-  checkpointer?: MemorySaver,
-) => {
+export const initializeHitlEmailAssistant = async () => {
   // Get tools
   const tools = await getTools();
   const toolsByName = await getToolsByName();
@@ -109,12 +103,10 @@ export const initializeHitlEmailAssistant = async (
   const llm = await initChatModel("openai:gpt-4");
 
   // Initialize the LLM instance for tool use
-  const llmWithTools = llm.bindTools(tools, { toolChoice: "required" },);
+  const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
 
   // Create the LLM call node
-  const llmCallNode = async (
-    state: MessagesState,
-  ): Promise<{ messages: Message[] }> => {
+  const llmCallNode = async (state: EmailAgentHITLStateType) => {
     const { messages } = state;
 
     // Set up system prompt for the agent
@@ -125,26 +117,26 @@ export const initializeHitlEmailAssistant = async (
       .replace("{calendar_preferences}", defaultCalPreferences);
 
     // Create full message history for the agent
-    const allMessages = [
-      { type: "system", content: systemPrompt },
+    const allMessages: BaseMessageLike[] = [
+      { role: "system", content: systemPrompt },
       ...messages,
     ];
 
     // Run the LLM with the messages
-    const result = await llmWithTools.invoke(allMessages as BaseMessageLike[]);
+    const result = await llmWithTools.invoke(allMessages);
 
     // Return the AIMessage result - need to cast through unknown since the types don't have proper overlap
     return {
-      messages: [result as unknown as Message],
+      messages: result,
     };
   };
 
   // Create the interrupt handler node for human review
   const interruptHandlerNode = async (
-    state: MessagesState,
+    state: EmailAgentHITLStateType,
   ): Promise<Command> => {
     // Store messages to be returned
-    const result: Message[] = [];
+    const result: BaseMessageLike[] = [];
 
     // Default goto is llm_call
     let goto: typeof END | "llm_call" = "llm_call";
@@ -153,14 +145,10 @@ export const initializeHitlEmailAssistant = async (
     const lastMessage = state.messages[state.messages.length - 1];
 
     // Exit early if there are no tool calls
-    if (
-      !hasToolCalls(lastMessage) ||
-      !lastMessage.tool_calls ||
-      lastMessage.tool_calls.length === 0
-    ) {
+    if (!hasToolCalls(lastMessage)) {
       return new Command({
         goto,
-        update: { messages: result },
+        update: { messages: [] },
       });
     }
 
@@ -174,14 +162,14 @@ export const initializeHitlEmailAssistant = async (
     for (const toolCall of lastMessage.tool_calls) {
       // Skip if we've already processed one tool call to allow proper resuming
       if (processedOneToolCall) {
-        continue;
+        break;
       }
 
       // Get or create a valid tool call ID
       const callId = toolCall.id ?? `fallback-id-${Date.now()}`;
 
       // Allowed tools for HITL
-      const hitlTools = ["write_email", "schedule_meeting", "Question"];
+      const hitlTools = ["write_email", "schedule_meeting", "question"];
 
       // If tool is not in our HITL list, execute it directly without interruption
       if (!hitlTools.includes(toolCall.name)) {
@@ -189,13 +177,12 @@ export const initializeHitlEmailAssistant = async (
         if (!tool) {
           console.error(`Tool ${toolCall.name} not found`);
           result.push({
-            type: "tool",
+            role: "tool",
             content: `Error: Tool ${toolCall.name} not found`,
             tool_call_id: callId,
           });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
-          continue;
         }
 
         try {
@@ -208,7 +195,7 @@ export const initializeHitlEmailAssistant = async (
           // Invoke the tool with properly formatted arguments
           const observation = await tool.invoke(parsedArgs);
           result.push({
-            type: "tool",
+            role: "tool",
             content: observation,
             tool_call_id: callId,
           });
@@ -217,14 +204,13 @@ export const initializeHitlEmailAssistant = async (
         } catch (error: any) {
           console.error(`Error executing tool ${toolCall.name}:`, error);
           result.push({
-            type: "tool",
+            role: "tool",
             content: `Error executing tool: ${error.message}`,
             tool_call_id: callId,
           });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
         }
-        continue;
       }
 
       // Get original email from email_input in state
@@ -246,110 +232,88 @@ export const initializeHitlEmailAssistant = async (
       const toolDisplay = formatForDisplay(toolCall);
       const description = originalEmailMarkdown + toolDisplay;
 
-      try {
-        // Use the interrupt function from LangGraph
-        const { interrupt } = await import("@langchain/langgraph");
+      // IMPORTANT: We're directly passing the interrupt call result without modifying it
+      const humanReview = interrupt<HumanInterrupt, HumanResponse[]>({
+        action_request: {
+          action: "Review this tool call before execution:",
+          args: toolCall.args,
+        },
+        description,
+        config: {
+          allow_ignore: true,
+          allow_respond: true,
+          allow_edit: true,
+          allow_accept: true,
+        },
+      })[0];
 
-        // IMPORTANT: We're directly passing the interrupt call result without modifying it
-        const humanReview = await interrupt({
-          question: "Review this tool call before execution:",
-          toolCall: toolCall,
-          description,
-        });
+      const reviewAction = humanReview.type;
+      const reviewData = humanReview.args;
 
-        const reviewAction = humanReview.action;
-        const reviewData = humanReview.data;
+      if (reviewAction === "accept") {
+        // Execute the tool with original args
+        const tool = toolsByName[toolCall.name];
+        // Parse the args properly
+        const parsedArgs =
+          typeof toolCall.args === "string"
+            ? JSON.parse(toolCall.args)
+            : toolCall.args;
 
-        if (reviewAction === "continue") {
-          // Execute the tool with original args
-          const tool = toolsByName[toolCall.name];
-          // Parse the args properly
-          const parsedArgs =
-            typeof toolCall.args === "string"
-              ? JSON.parse(toolCall.args)
-              : toolCall.args;
-
-          const observation = await tool.invoke(parsedArgs);
-          result.push({
-            type: "tool",
-            content: observation,
-            tool_call_id: callId,
-          });
-          processedToolCallIds.add(callId);
-          processedOneToolCall = true;
-        } else if (reviewAction === "update") {
-          // Execute with edited args
-          const tool = toolsByName[toolCall.name];
-          // Make sure the updated args are properly formatted
-          const updatedArgs =
-            typeof reviewData === "string"
-              ? JSON.parse(reviewData)
-              : reviewData;
-
-          const observation = await tool.invoke(updatedArgs);
-          result.push({
-            type: "tool",
-            content: observation,
-            tool_call_id: callId,
-          });
-          processedToolCallIds.add(callId);
-          processedOneToolCall = true;
-        } else if (reviewAction === "feedback") {
-          // Add feedback as a tool message
-          result.push({
-            type: "tool",
-            content: reviewData,
-            tool_call_id: callId,
-          });
-          processedToolCallIds.add(callId);
-          processedOneToolCall = true;
-          goto = "llm_call";
-        } else if (reviewAction === "stop") {
-          // Even when stopping, we still need to respond to the tool call
-          result.push({
-            type: "tool",
-            content: "User chose to stop this action.",
-            tool_call_id: callId,
-          });
-          processedToolCallIds.add(callId);
-          processedOneToolCall = true;
-          goto = END;
-        } else {
-          // Handle any other action by providing a default response
-          result.push({
-            type: "tool",
-            content: "Action not recognized or canceled by user.",
-            tool_call_id: callId,
-          });
-          processedToolCallIds.add(callId);
-          processedOneToolCall = true;
-          goto = END;
-        }
-      } catch (error: any) {
-        // Very important: Just rethrow any GraphInterrupt error without modifying it
-        // This ensures LangGraph can properly handle the interruption
-        if (
-          error.name === "GraphInterrupt" ||
-          (error.message &&
-            typeof error.message === "string" &&
-            error.message.includes("GraphInterrupt"))
-        ) {
-          throw error;
-        }
-
-        console.error("Error with interrupt handler:", error);
-        // For other errors, provide a message response
+        const observation = await tool.invoke(parsedArgs);
         result.push({
-          type: "tool",
-          content: `Error during tool execution: ${error.message}`,
+          role: "tool",
+          content: observation,
           tool_call_id: callId,
         });
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
+      } else if (
+        reviewAction === "edit" &&
+        typeof reviewData === "object" &&
+        reviewData
+      ) {
+        // Execute with edited args
+        const tool = toolsByName[toolCall.name];
+
+        const observation = await tool.invoke(reviewData);
+        result.push({
+          role: "tool",
+          content: observation,
+          tool_call_id: callId,
+        });
+        processedToolCallIds.add(callId);
+        processedOneToolCall = true;
+      } else if (
+        reviewAction === "response" &&
+        typeof reviewData === "string"
+      ) {
+        // Add feedback as a tool message
+        result.push({
+          role: "tool",
+          content: reviewData,
+          tool_call_id: callId,
+        });
+        processedToolCallIds.add(callId);
+        processedOneToolCall = true;
+        goto = "llm_call";
+      } else if (reviewAction === "ignore") {
+        // Even when stopping, we still need to respond to the tool call
+        result.push({
+          role: "tool",
+          content: "User chose to ignore this action.",
+          tool_call_id: callId,
+        });
+        processedToolCallIds.add(callId);
+        processedOneToolCall = true;
+        goto = END;
+      } else {
+        throw new Error(`Unknown action: ${reviewAction}`);
       }
     }
 
-    // If we've processed a tool call, return right away
+    //  ----------------------------------------
+    // TODO: `processedOneToolCall` does not exist in PY. Remove & update any logic which relies on it
+    //  ----------------------------------------
     if (processedOneToolCall) {
       return new Command({
         goto,
@@ -365,7 +329,7 @@ export const initializeHitlEmailAssistant = async (
         // We've skipped this tool call, but we still need to respond to it
         // This is important for OpenAI's API requirement that every tool call has a response
         result.push({
-          type: "tool",
+          role: "tool",
           content: "Tool execution pending human review.",
           tool_call_id: callId,
         });
@@ -380,17 +344,13 @@ export const initializeHitlEmailAssistant = async (
   };
 
   // Conditional routing function
-  const shouldContinue = (state: MessagesState) => {
+  const shouldContinue = (state: EmailAgentHITLStateType) => {
     const messages = state.messages;
     if (!messages || messages.length === 0) return END;
 
     const lastMessage = messages[messages.length - 1];
 
-    if (
-      hasToolCalls(lastMessage) &&
-      lastMessage.tool_calls &&
-      lastMessage.tool_calls.length > 0
-    ) {
+    if (hasToolCalls(lastMessage)) {
       // Check if any tool call is the "Done" tool
       if (lastMessage.tool_calls.some((toolCall) => toolCall.name === "Done")) {
         return END;
@@ -402,7 +362,7 @@ export const initializeHitlEmailAssistant = async (
   };
 
   // Create the triage router node
-  const triageRouterNode = async (state: MessagesState) => {
+  const triageRouterNode = async (state: EmailAgentHITLStateType) => {
     try {
       const { email_input } = state;
       const parseResult = parseEmail(email_input);
@@ -432,45 +392,36 @@ export const initializeHitlEmailAssistant = async (
         emailThread,
       );
 
-      // Add JSON format instruction to the system prompt
       const jsonSystemPrompt = `${systemPrompt}\n\nProvide your response in the following JSON format:
 {
   "reasoning": "your step-by-step reasoning",
   "classification": "ignore" | "respond" | "notify"
 }`;
 
+      const classificationSchema = z.object({
+        reasoning: z.string().describe("your step-by-step reasoning"),
+        classification: z
+          .enum(["ignore", "respond", "notify"])
+          .describe("The classification of the email"),
+      });
+
+      const llmWithClassification = llm.withStructuredOutput(
+        classificationSchema,
+        {
+          name: "classification",
+        },
+      );
+
       // Use the regular LLM instead of withStructuredOutput
-      const response = await llm.invoke([
-        { type: "system", content: jsonSystemPrompt },
-        { type: "human", content: userPrompt },
+      const response = await llmWithClassification.invoke([
+        { role: "system", content: jsonSystemPrompt },
+        { role: "human", content: userPrompt },
       ]);
-
-      // Parse the JSON response manually
-      let classification: "ignore" | "respond" | "notify" = "notify"; // Default to notify
-
-      try {
-        // Extract JSON from the response content
-        const responseText = response.content.toString();
-        const parsedResponse = JSON.parse(responseText);
-
-        if (
-          parsedResponse.classification &&
-          ["ignore", "respond", "notify"].includes(
-            parsedResponse.classification,
-          )
-        ) {
-          classification = parsedResponse.classification;
-        }
-      } catch (parseError) {
-        console.error("Error parsing LLM response as JSON:", parseError);
-        console.log("Raw response:", response.content.toString());
-        // Fall back to notify if parsing fails
-      }
 
       let goto: "triage_interrupt_handler" | "response_agent" | typeof END =
         END;
-      let update: Partial<MessagesState> = {
-        classification_decision: classification,
+      let update: Partial<EmailAgentHITLStateType> = {
+        classification_decision: response.classification,
       };
 
       // Create message
@@ -478,17 +429,17 @@ export const initializeHitlEmailAssistant = async (
         new HumanMessage({ content: `Email to review: ${emailMarkdown}` }),
       ];
 
-      if (classification === "respond") {
+      if (response.classification === "respond") {
         console.log(
           "📧 Classification: RESPOND - This email requires a response",
         );
         goto = "response_agent";
-      } else if (classification === "notify") {
+      } else if (response.classification === "notify") {
         console.log(
           "🔔 Classification: NOTIFY - This email contains important information",
         );
         goto = "triage_interrupt_handler";
-      } else if (classification === "ignore") {
+      } else if (response.classification === "ignore") {
         console.log(
           "🚫 Classification: IGNORE - This email can be safely ignored",
         );
@@ -511,7 +462,7 @@ export const initializeHitlEmailAssistant = async (
           classification_decision: "error",
           messages: [
             {
-              type: "system",
+              role: "system",
               content: `Error in triage router: ${error.message}`,
             },
           ],
@@ -521,7 +472,7 @@ export const initializeHitlEmailAssistant = async (
   };
 
   // Create the triage interrupt handler node
-  const triageInterruptHandlerNode = async (state: MessagesState) => {
+  const triageInterruptHandlerNode = async (state: EmailAgentHITLStateType) => {
     // Parse the email input
     const parseResult = parseEmail(state.email_input);
 
@@ -536,29 +487,38 @@ export const initializeHitlEmailAssistant = async (
     const emailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);
 
     try {
-      // Use the interrupt function from LangGraph
-      const { interrupt } = await import("@langchain/langgraph");
-
-      const humanReview = await interrupt({
-        question: `Email requires attention: ${state.classification_decision || "notify"}`,
-        email: emailMarkdown,
-      });
+      const humanReview = interrupt<HumanInterrupt, HumanResponse[]>({
+        action_request: {
+          action: `Email requires attention: ${state.classification_decision || "notify"}`,
+          args: {},
+        },
+        description: emailMarkdown,
+        config: {
+          allow_ignore: true,
+          allow_respond: true,
+          allow_edit: false,
+          allow_accept: true,
+        },
+      })[0];
 
       let goto: "response_agent" | typeof END = END;
       const messages = [
-        { type: "human", content: `Email to review: ${emailMarkdown}` },
+        { role: "human", content: `Email to review: ${emailMarkdown}` },
       ];
 
       // Handle different response types
-      const reviewAction = humanReview.action;
-      const reviewData = humanReview.data;
+      const reviewAction = humanReview.type;
+      const reviewData = humanReview.args;
 
-      if (reviewAction === "continue") {
+      if (reviewAction === "accept") {
         // Human wants to handle this email - proceed to response agent
         goto = "response_agent";
-      } else if (reviewAction === "feedback") {
+      } else if (
+        reviewAction === "response" &&
+        typeof reviewData === "string"
+      ) {
         // Human provided feedback or instructions on how to handle
-        messages.push({ type: "human", content: reviewData });
+        messages.push({ role: "human", content: reviewData });
         goto = "response_agent";
       } else {
         // Default to END for other actions
@@ -578,7 +538,7 @@ export const initializeHitlEmailAssistant = async (
         goto: END,
         update: {
           messages: [
-            { type: "system", content: `Error in triage interrupt: ${error}` },
+            { role: "system", content: `Error in triage interrupt: ${error}` },
           ],
         },
       });
@@ -586,12 +546,7 @@ export const initializeHitlEmailAssistant = async (
   };
 
   // Build agent subgraph
-  const agentBuilder = new StateGraph<
-    typeof EmailAgentHITLState,
-    MessagesState,
-    Partial<MessagesState>,
-    AgentNodes
-  >(EmailAgentHITLState)
+  const agentBuilder = new StateGraph(EmailAgentHITLState)
     .addNode("llm_call", llmCallNode)
     .addNode("interrupt_handler", interruptHandlerNode)
     .addEdge(START, "llm_call")
@@ -605,26 +560,19 @@ export const initializeHitlEmailAssistant = async (
   const responseAgent = agentBuilder.compile();
 
   // Build overall workflow
-  const emailAssistantGraph = new StateGraph<
-    typeof EmailAgentHITLState,
-    MessagesState,
-    Partial<MessagesState>,
-    AgentNodes
-  >(EmailAgentHITLState)
+  const emailAssistantGraph = new StateGraph(EmailAgentHITLState)
     .addNode("triage_router", triageRouterNode, {
       ends: ["triage_interrupt_handler", "response_agent", END],
     })
     .addNode("triage_interrupt_handler", triageInterruptHandlerNode, {
       ends: ["response_agent", END],
     })
-    .addNode("response_agent", responseAgent, {
-      ends: [END],
-    })
+    .addNode("response_agent", responseAgent)
     .addEdge(START, "triage_router")
     .addEdge("response_agent", END);
 
   // Use provided checkpointer or create a new one
-  const actualCheckpointer = checkpointer || new MemorySaver();
+  const actualCheckpointer = new MemorySaver();
 
   console.log(
     "Compiling HITL email assistant with checkpointer:",
@@ -638,11 +586,4 @@ export const initializeHitlEmailAssistant = async (
 };
 
 // Initialize and export HITL email assistant directly with a default checkpointer
-export const hitlEmailAssistant = initializeHitlEmailAssistant(
-  new MemorySaver(),
-);
-
-// Export the function with the name the tests expect
-export const createHitlEmailAssistant = async () => {
-  return initializeHitlEmailAssistant(new MemorySaver());
-};
+export const hitlEmailAssistant = initializeHitlEmailAssistant();

@@ -48,7 +48,7 @@ import { ToolNode } from "@langchain/langgraph/prebuilt";
 import "@langchain/langgraph/zod";
 
 // LOCAL IMPORTS
-import { getTools, getToolsByName } from "../tools/base.js";
+import { getTools, getToolsByName } from "./tools/base.js";
 import {
   triageSystemPrompt,
   triageUserPrompt,
@@ -58,32 +58,23 @@ import {
   defaultCalPreferences,
   defaultTriageInstructions,
   AGENT_TOOLS_PROMPT,
-} from "../prompts.js";
-import { BaseEmailAgentState, BaseEmailAgentStateType } from "../schemas.js";
-import { parseEmail, formatEmailMarkdown } from "../utils.js";
+} from "./prompts.js";
+import { BaseEmailAgentState, BaseEmailAgentStateType } from "./schemas.js";
+import { parseEmail, formatEmailMarkdown } from "./utils.js";
 
-// Message Types from LangGraph SDK
-import { AIMessage, Message } from "@langchain/langgraph-sdk";
-import { HumanMessage } from "@langchain/core/messages";
-// Helper for type checking
+import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { z } from "zod";
+
 const hasToolCalls = (
-  message: Message,
+  message: BaseMessage,
 ): message is AIMessage & { tool_calls: ToolCall[] } => {
   return (
-    message.type === "ai" &&
+    message.getType() === "ai" &&
     "tool_calls" in message &&
-    Array.isArray(message.tool_calls)
+    Array.isArray(message.tool_calls) &&
+    message.tool_calls.length > 0
   );
 };
-
-// Define node names as a union type for better type safety
-type AgentNodes =
-  | typeof START
-  | typeof END
-  | "llm_call"
-  | "environment"
-  | "triage_router"
-  | "response_agent";
 
 /**
  * Initialize and export the email assistant
@@ -91,12 +82,10 @@ type AgentNodes =
 export const initializeEmailAssistant = async () => {
   // Get tools
   const tools = await getTools();
-  const toolsByName = await getToolsByName(tools);
 
   // Initialize the LLM
   const llm = await initChatModel("openai:gpt-4", {
     temperature: 0.0,
-    openAIApiKey: process.env.OPENAI_API_KEY,
   });
 
   // Initialize the LLM for tool use
@@ -117,13 +106,13 @@ export const initializeEmailAssistant = async () => {
 
     // Run the LLM with the messages
     const response = await llmWithTools.invoke([
-      { type: "system", content: systemPromptContent },
+      { role: "system", content: systemPromptContent },
       ...messages,
     ]);
 
     // Use explicit casting as the response is compatible with Message in runtime
     return {
-      messages: [response as unknown as Message],
+      messages: response,
     };
   };
 
@@ -136,12 +125,12 @@ export const initializeEmailAssistant = async () => {
      * Route to environment for tool execution, or end if Done tool called
      * Similar to the Python version's should_continue function
      */
-    const messages = state.messages ;
+    const messages = state.messages;
     if (!messages || messages.length === 0) return END;
 
-    const lastMessage = messages[messages.length - 1] as unknown as Message;
+    const lastMessage = messages[messages.length - 1];
 
-    if (hasToolCalls(lastMessage) && lastMessage.tool_calls.length > 0) {
+    if (hasToolCalls(lastMessage)) {
       // Check if any tool call is the "Done" tool
       if (lastMessage.tool_calls.some((toolCall) => toolCall.name === "Done")) {
         return END;
@@ -197,57 +186,52 @@ export const initializeEmailAssistant = async () => {
   "classification": "ignore" | "respond" | "notify"
 }`;
 
+      const classificationSchema = z.object({
+        reasoning: z.string().describe("your step-by-step reasoning"),
+        classification: z
+          .enum(["ignore", "respond", "notify"])
+          .describe("The classification of the email"),
+      });
+
+      const llmWithClassification = llm.withStructuredOutput(
+        classificationSchema,
+        {
+          name: "classification",
+        },
+      );
+
       // Use the regular LLM instead of withStructuredOutput
-      const response = await llm.invoke([
-        { type: "system", content: jsonSystemPrompt },
-        { type: "human", content: userPrompt },
+      const response = await llmWithClassification.invoke([
+        { role: "system", content: jsonSystemPrompt },
+        { role: "human", content: userPrompt },
       ]);
-
-      // Parse the JSON response manually
-      let classification: "ignore" | "respond" | "notify" = "ignore"; // Default
-
-      try {
-        // Extract JSON from the response content
-        const responseText = response.content.toString();
-        const parsedResponse = JSON.parse(responseText);
-
-        if (
-          parsedResponse.classification &&
-          ["ignore", "respond", "notify"].includes(
-            parsedResponse.classification,
-          )
-        ) {
-          classification = parsedResponse.classification;
-        }
-      } catch (parseError) {
-        console.error("Error parsing LLM response as JSON:", parseError);
-        console.log("Raw response:", response.content.toString());
-      }
 
       let goto = END;
       let update: Partial<BaseEmailAgentStateType> = {
-        classification_decision: classification,
+        classification_decision: response.classification,
       };
 
-      if (classification === "respond") {
+      if (response.classification === "respond") {
         console.log(
           "📧 Classification: RESPOND - This email requires a response",
         );
         goto = "response_agent";
 
         update.messages = [
-          new HumanMessage({ content: `Respond to the email: ${emailMarkdown}` }),
+          new HumanMessage({
+            content: `Respond to the email: ${emailMarkdown}`,
+          }),
         ];
-      } else if (classification === "ignore") {
+      } else if (response.classification === "ignore") {
         console.log(
           "🚫 Classification: IGNORE - This email can be safely ignored",
         );
-      } else if (classification === "notify") {
+      } else if (response.classification === "notify") {
         console.log(
           "🔔 Classification: NOTIFY - This email contains important information",
         );
       } else {
-        throw new Error(`Invalid classification: ${classification}`);
+        throw new Error(`Invalid classification: ${response.classification}`);
       }
 
       return new Command({
@@ -263,7 +247,7 @@ export const initializeEmailAssistant = async () => {
           classification_decision: "ignore",
           messages: [
             {
-              type: "system",
+              role: "system",
               content: `Error processing email: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
@@ -273,12 +257,7 @@ export const initializeEmailAssistant = async () => {
   };
 
   // Build agent subgraph
-  const agentBuilder = new StateGraph<
-    typeof BaseEmailAgentState,
-    BaseEmailAgentStateType,
-    Partial<BaseEmailAgentStateType>,
-    AgentNodes
-  >(BaseEmailAgentState)
+  const agentBuilder = new StateGraph(BaseEmailAgentState)
     .addNode("llm_call", llmCallNode)
     .addNode("environment", toolNode)
     .addEdge(START, "llm_call")
@@ -292,12 +271,7 @@ export const initializeEmailAssistant = async () => {
   const agent = agentBuilder.compile();
 
   // Build overall workflow
-  const emailAssistantGraph = new StateGraph<
-    typeof BaseEmailAgentState,
-    BaseEmailAgentStateType,
-    Partial<BaseEmailAgentStateType>,
-    AgentNodes
-  >(BaseEmailAgentState)
+  const emailAssistantGraph = new StateGraph(BaseEmailAgentState)
     .addNode("triage_router", triageRouterNode, {
       ends: ["response_agent", END],
     })
@@ -308,5 +282,4 @@ export const initializeEmailAssistant = async () => {
   return emailAssistantGraph.compile();
 };
 
-// Initialize and export email assistant directly - replaces getEmailAssistant
 export const emailAssistant = initializeEmailAssistant();

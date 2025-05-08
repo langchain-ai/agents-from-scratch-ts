@@ -67,9 +67,7 @@ ${emailThread}`;
  * @param state Current message state
  * @param toolCall The tool call to format
  */
-export function formatForDisplay(
-  toolCall: ToolCall,
-): string {
+export function formatForDisplay(toolCall: ToolCall): string {
   // Initialize empty display
   let display = "";
 
@@ -95,7 +93,7 @@ ${toolCall.args.content}
 `;
       break;
 
-    case "Question":
+    case "question":
       // Special formatting for questions to make them clear
       display += `# Question for User
 

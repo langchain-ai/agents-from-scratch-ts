@@ -63,7 +63,7 @@ export const questionTool = tool(
     return `The user will see and can answer this question: ${content}`;
   },
   {
-    name: "Question",
+    name: "question",
     description: "Ask the user a follow-up question",
     schema: z.object({
       content: z.string().describe("The question to ask the user"),

@@ -48,7 +48,7 @@ export async function getTools({
     background: backgroundTool,
     cal_preferences: calPreferencesTool,
     response_preferences: responsePreferencesTool,
-    Question: questionTool,
+    question: questionTool,
   };
 
   // If specific tool names are provided, filter to only those tools

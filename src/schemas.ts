@@ -42,8 +42,8 @@ export const RouterSchema = z.object({
     .enum(["ignore", "respond", "notify"])
     .describe(
       "The classification of an email: 'ignore' for irrelevant emails, " +
-      "'notify' for important information that doesn't need a response, " +
-      "'respond' for emails that need a reply",
+        "'notify' for important information that doesn't need a response, " +
+        "'respond' for emails that need a reply",
     ),
 });
 
