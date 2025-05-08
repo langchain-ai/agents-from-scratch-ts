@@ -1,14 +1,15 @@
 import { z } from "zod";
 import { BaseMessage } from "@langchain/core/messages";
 import "@langchain/langgraph/zod";
-import { StateGraph } from "@langchain/langgraph";
+import { addMessages, Messages, StateGraph } from "@langchain/langgraph";
+// TO DO REPLACE ANY WITH THE CORRECT TYPE ask David/Ben
 
 // Define the Zod schemas for the email assistant states
 export const BaseEmailAgentState = z.object({
   messages: z
-    .array(z.any()) // Using any to support all Message types
+    .custom<Messages>() // Using any to support all Message types
     .default(() => [])
-    .langgraph.reducer((left, right) => [...left, ...right], z.array(z.any())),
+    .langgraph.reducer((left, right) => addMessages(left, right)),
   email_input: z.any(),
   classification_decision: z
     .enum(["ignore", "respond", "notify"])
@@ -43,8 +44,8 @@ export const RouterSchema = z.object({
     .enum(["ignore", "respond", "notify"])
     .describe(
       "The classification of an email: 'ignore' for irrelevant emails, " +
-        "'notify' for important information that doesn't need a response, " +
-        "'respond' for emails that need a reply",
+      "'notify' for important information that doesn't need a response, " +
+      "'respond' for emails that need a reply",
     ),
 });
 
