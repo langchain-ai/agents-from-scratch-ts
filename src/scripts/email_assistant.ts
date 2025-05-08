@@ -186,11 +186,10 @@ export const initializeEmailAssistant = async () => {
       const parseResult = parseEmail(email_input);
       
       // Validate parsing result
-      if (!Array.isArray(parseResult) || parseResult.length !== 4) {
+      if (!parseResult || typeof parseResult !== 'object') {
         throw new Error("Invalid email parsing result");
       }
-      
-      const [author, to, subject, emailThread] = parseResult;
+      const { author, to, subject, emailThread } = parseResult;
       
       const systemPrompt = triageSystemPrompt
         .replace("{background}", defaultBackground)

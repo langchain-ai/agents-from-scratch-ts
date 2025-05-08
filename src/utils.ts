@@ -1,5 +1,6 @@
-
 import { EmailData } from "./schemas.js"
+import type { Message } from '@langchain/langgraph-sdk';
+import type { ToolCall } from '@langchain/core/messages/tool';
 
 
 
@@ -8,19 +9,6 @@ import { EmailData } from "./schemas.js"
  */
 
 // Types
-interface Message {
-  role?: string;
-  content: any;
-  tool_calls?: ToolCall[];
-  toolCalls?: ToolCall[];
-  pretty_print?: () => void;
-}
-
-interface ToolCall {
-  name: string;
-  args: Record<string, any>;
-}
-
 interface Example {
   value: string;
 }
@@ -32,9 +20,9 @@ interface Example {
 /**
  * Parses an email to extract key information
  * @param email The email data to parse
- * @returns A tuple of [author, to, subject, emailThread]
+ * @returns An object with { author, to, subject, emailThread }
  */
-export function parseEmail(email: EmailData): [string, string, string, string] {
+export function parseEmail(email: EmailData): { author: string; to: string; subject: string; emailThread: string } {
   try {
     // Extract key information from email data
     const author = email.from_email;
@@ -42,7 +30,7 @@ export function parseEmail(email: EmailData): [string, string, string, string] {
     const subject = email.subject;
     const emailThread = email.page_content;
 
-    return [author, to, subject, emailThread];
+    return { author, to, subject, emailThread };
   } catch (error) {
     console.error("Error parsing email:", error);
     throw new Error("Failed to parse email");
@@ -256,14 +244,16 @@ export function formatMessagesString(messages: Message[]): string {
       ? message.content 
       : JSON.stringify(message.content);
     
-    // Add tool calls if present
-    const toolCalls = message.tool_calls || message.toolCalls;
-    if (toolCalls && toolCalls.length > 0) {
-      const toolCallsStr = toolCalls.map(tc => 
-        `\n  Tool: ${tc.name}\n  Args: ${JSON.stringify(tc.args, null, 2)}`
-      ).join('\n');
-      
-      content += `\n[Tool Calls: ${toolCallsStr}]`;
+    // Only AIMessage can have tool_calls or toolCalls
+    if (message.type === 'ai') {
+      const aiMsg = message as import('@langchain/langgraph-sdk').AIMessage;
+      const toolCalls = aiMsg.tool_calls || (aiMsg as any).toolCalls;
+      if (toolCalls && toolCalls.length > 0) {
+        const toolCallsStr = toolCalls.map((tc: ToolCall) => 
+          `\n  Tool: ${tc.name}\n  Args: ${JSON.stringify(tc.args, null, 2)}`
+        ).join('\n');
+        content += `\n[Tool Calls: ${toolCallsStr}]`;
+      }
     }
     
     return `${prefix}${content}`;

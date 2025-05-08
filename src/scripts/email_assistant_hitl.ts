@@ -224,10 +224,10 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
       const emailInput = state.email_input;
       const parseResult = parseEmail(emailInput);
       // Validate parsing result
-      if (!Array.isArray(parseResult) || parseResult.length !== 4) {
+      if (!parseResult || typeof parseResult !== 'object') {
         throw new Error("Invalid email parsing result");
       }
-      const [author, to, subject, emailThread] = parseResult;
+      const { author, to, subject, emailThread } = parseResult;
       const originalEmailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);
       
       // Format tool call for display
@@ -363,11 +363,11 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
       const parseResult = parseEmail(email_input);
       
       // Validate parsing result
-      if (!Array.isArray(parseResult) || parseResult.length !== 4) {
+      if (!parseResult || typeof parseResult !== 'object') {
         throw new Error("Invalid email parsing result");
       }
       
-      const [author, to, subject, emailThread] = parseResult;
+      const { author, to, subject, emailThread } = parseResult;
       
       const systemPrompt = triageSystemPrompt
         .replace("{background}", defaultBackground)
@@ -462,11 +462,11 @@ export const initializeHitlEmailAssistant = async (checkpointer?: MemorySaver) =
     const parseResult = parseEmail(state.email_input);
     
     // Validate parsing result
-    if (!Array.isArray(parseResult) || parseResult.length !== 4) {
+    if (!parseResult || typeof parseResult !== 'object') {
       throw new Error("Invalid email parsing result");
     }
     
-    const [author, to, subject, emailThread] = parseResult;
+    const { author, to, subject, emailThread } = parseResult;
     
     // Create email markdown for Agent Inbox in case of notification  
     const emailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);

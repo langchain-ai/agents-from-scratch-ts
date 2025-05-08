@@ -313,11 +313,11 @@ export const createTriageRouterNode = (llm: ChatModel, store: InMemoryStore) => 
       const parseResult = parseEmail(email_input);
       
       // Validate parsing result
-      if (!Array.isArray(parseResult) || parseResult.length !== 4) {
+      if (!parseResult || typeof parseResult !== 'object') {
         throw new Error("Invalid email parsing result");
       }
       
-      const [author, to, subject, emailThread] = parseResult;
+      const { author, to, subject, emailThread } = parseResult;
       
       // Get triage preferences from memory
       const triagePreferences = await getMemory(
@@ -422,11 +422,11 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
     const parseResult = parseEmail(state.email_input);
     
     // Validate parsing result
-    if (!Array.isArray(parseResult) || parseResult.length !== 4) {
+    if (!parseResult || typeof parseResult !== 'object') {
       throw new Error("Invalid email parsing result");
     }
     
-    const [author, to, subject, emailThread] = parseResult;
+    const { author, to, subject, emailThread } = parseResult;
     
     // Create email markdown for Agent Inbox in case of notification  
     const emailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);
@@ -644,10 +644,10 @@ export const createInterruptHandlerNode = (toolsByName: Record<string, Structure
       const emailInput = state.email_input;
       const parseResult = parseEmail(emailInput);
       // Validate parsing result
-      if (!Array.isArray(parseResult) || parseResult.length !== 4) {
+      if (!parseResult || typeof parseResult !== 'object') {
         throw new Error("Invalid email parsing result");
       }
-      const [author, to, subject, emailThread] = parseResult;
+      const { author, to, subject, emailThread } = parseResult;
       const originalEmailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);
       
       // Format tool call for display and prepend the original email
