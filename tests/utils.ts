@@ -8,10 +8,8 @@
  * - Mock assistant factory with configurable behavior
  */
 import { v4 as uuidv4 } from 'uuid';
-import { MemorySaver, Command, InMemoryStore } from '@langchain/langgraph';
-import { z } from 'zod';
+import { InMemoryStore } from '@langchain/langgraph';
 
-import { extractToolCalls, formatMessagesString } from '../src/utils.js';
 
 // Define EmailData interface directly instead of importing
 export interface EmailData {

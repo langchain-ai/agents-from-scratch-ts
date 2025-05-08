@@ -1,4 +1,4 @@
-import { EmailData } from "./schemas.js"
+import { EmailData } from "./schemas.js";
 import type { Message } from '@langchain/langgraph-sdk';
 import type { ToolCall } from '@langchain/core/messages/tool';
 

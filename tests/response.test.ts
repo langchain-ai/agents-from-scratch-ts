@@ -17,15 +17,15 @@
 import { describe, test, expect, beforeAll } from '@jest/globals';
 import { Command } from '@langchain/langgraph';
 
-import { 
+import {
   AGENT_MODULE,
   setAgentModule,
   createMockAssistant,
   createThreadConfig,
-  extractValues, 
+  extractValues,
   collectStream,
-  testEmails, 
-  testCriteria, 
+  testEmails,
+  testCriteria,
   expectedToolCalls,
   evaluateResponseCriteria,
   EmailData

@@ -16,8 +16,8 @@
 import { describe, test, expect, beforeAll } from '@jest/globals';
 import { Command } from '@langchain/langgraph';
 
-import { 
-  AGENT_MODULE, 
+import {
+  AGENT_MODULE,
   setAgentModule,
   createMockAssistant,
   createThreadConfig,

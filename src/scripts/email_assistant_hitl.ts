@@ -39,24 +39,18 @@
 
 // LangChain imports for chat models
 import { initChatModel } from "langchain/chat_models/universal";
-import { BaseChatModel as ChatModel } from "@langchain/core/language_models/chat_models";
 
 // LangGraph imports
-import { 
-  StateGraph, 
-  START, 
+import {
+  StateGraph,
+  START,
   END,
   Command,
-  MemorySaver,
-  InMemoryStore
+  MemorySaver
 } from "@langchain/langgraph";
 import { ToolCall } from "@langchain/core/messages/tool";
-import { isToolMessage } from "@langchain/core/messages/tool";
-import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { StructuredTool } from "@langchain/core/tools";
 
 // Zod imports
-import { z } from "zod";
 import "@langchain/langgraph/zod";
 
 // LOCAL IMPORTS
@@ -75,11 +69,6 @@ import {
   defaultTriageInstructions
 } from "../prompts.js";
 import {
-  RouterSchema,
-  RouterOutput,
-  EmailData,
-  StateInput,
-  State,
   EmailAgentHITLState,
   EmailAgentHITLStateType
 } from "../schemas.js";
@@ -90,12 +79,9 @@ import {
 } from "../utils.js";
 
 // Message Types from LangGraph SDK
-import { 
-  HumanMessage, 
-  SystemMessage, 
-  ToolMessage, 
-  AIMessage, 
-  Message 
+import {
+  AIMessage,
+  Message
 } from "@langchain/langgraph-sdk";
 
 
