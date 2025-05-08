@@ -68,7 +68,6 @@ ${emailThread}`;
  * @param toolCall The tool call to format
  */
 export function formatForDisplay(
-  state: { messages: Message[] },
   toolCall: ToolCall,
 ): string {
   // Initialize empty display

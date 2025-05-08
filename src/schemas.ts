@@ -2,14 +2,16 @@ import { z } from "zod";
 import { BaseMessage } from "@langchain/core/messages";
 import "@langchain/langgraph/zod";
 import { addMessages, Messages, StateGraph } from "@langchain/langgraph";
-// TO DO REPLACE ANY WITH THE CORRECT TYPE ask David/Ben
+
+export const MessagesState = z.object({
+  messages: z
+    .custom<BaseMessage[]>() // Using any to support all Message types
+    .default(() => [])
+    .langgraph.reducer<Messages>((left, right) => addMessages(left, right)),
+});
 
 // Define the Zod schemas for the email assistant states
-export const BaseEmailAgentState = z.object({
-  messages: z
-    .custom<Messages>() // Using any to support all Message types
-    .default(() => [])
-    .langgraph.reducer((left, right) => addMessages(left, right)),
+export const BaseEmailAgentState = MessagesState.extend({
   email_input: z.any(),
   classification_decision: z
     .enum(["ignore", "respond", "notify"])
@@ -17,11 +19,7 @@ export const BaseEmailAgentState = z.object({
     .default(null),
 });
 
-export const EmailAgentHITLState = z.object({
-  messages: z
-    .array(z.any()) // Using any to support all Message types
-    .default(() => [])
-    .langgraph.reducer((left, right) => [...left, ...right], z.array(z.any())),
+export const EmailAgentHITLState = MessagesState.extend({
   email_input: z.any(),
   classification_decision: z
     .enum(["ignore", "respond", "notify", "error"])
@@ -62,20 +60,4 @@ export type EmailData = {
   page_content: string;
   send_time: string;
   to_email: string;
-};
-
-/**
- * Input to the state
- */
-export type StateInput = {
-  email_input: EmailData;
-};
-
-/**
- * Core state definition for the graph
- */
-export type State = {
-  messages: BaseMessage[];
-  email_input: EmailData;
-  classification_decision?: "ignore" | "respond" | "notify";
 };

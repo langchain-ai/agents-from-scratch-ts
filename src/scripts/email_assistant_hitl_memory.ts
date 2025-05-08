@@ -50,15 +50,16 @@ import {
   MemorySaver,
   InMemoryStore,
   BaseStore,
+  LangGraphRunnableConfig,
+  interrupt,
+  Messages,
+  addMessages,
 } from "@langchain/langgraph";
 import { ToolCall } from "@langchain/core/messages/tool";
 import { StructuredTool } from "@langchain/core/tools";
 
 // Zod imports
 import "@langchain/langgraph/zod";
-
-// Message Types from LangGraph SDK
-import { AIMessage, Message } from "@langchain/langgraph-sdk";
 
 // LOCAL IMPORTS
 import { getTools, getToolsByName } from "../tools/base.js";
@@ -74,13 +75,15 @@ import {
 } from "../prompts.js";
 import { EmailAgentHITLState, EmailAgentHITLStateType } from "../schemas.js";
 import { parseEmail, formatEmailMarkdown, formatForDisplay } from "../utils.js";
+import { AIMessage, BaseMessage, BaseMessageLike } from "@langchain/core/messages";
+import { HumanInterrupt, HumanResponse } from "@langchain/langgraph/prebuilt";
 
 // Helper for type checking
 const hasToolCalls = (
-  message: Message,
+  message: BaseMessage,
 ): message is AIMessage & { tool_calls: ToolCall[] } => {
   return (
-    message.type === "ai" &&
+    message.getType() === "ai" &&
     "tool_calls" in message &&
     Array.isArray(message.tool_calls)
   );
@@ -92,17 +95,6 @@ interface UserPreferences {
   justification: string;
 }
 
-// Define proper TypeScript types for our state
-type AgentStateType = EmailAgentHITLStateType;
-// Define node names as a union type for better type safety
-type AgentNodes =
-  | typeof START
-  | typeof END
-  | "llm_call"
-  | "interrupt_handler"
-  | "triage_router"
-  | "triage_interrupt_handler"
-  | "response_agent";
 
 // Constants for memory update prompts
 const MEMORY_UPDATE_INSTRUCTIONS = `
@@ -142,7 +134,7 @@ Remember:
 `;
 
 // Define the shouldContinue function needed for conditional edges
-const shouldContinue = (state: AgentStateType) => {
+const shouldContinue = (state: EmailAgentHITLStateType) => {
   const messages = state.messages;
   if (!messages || messages.length === 0) return END;
 
@@ -172,7 +164,7 @@ export const setupLLMAndTools = async () => {
   const toolsByName = await getToolsByName();
 
   // Initialize the LLM for use with router / structured output
-  const llm = await initChatModel("openai:gpt-4");
+  const llm = await initChatModel("openai:gpt-4o");
 
   // Initialize the LLM, enforcing tool use (of any available tools) for agent
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
@@ -199,16 +191,16 @@ async function getMemory(
 
     // If memory exists, return its content (the value)
     if (userPreferences) {
-      return userPreferences.value as unknown as string;
+      return userPreferences.value.memoryContent;
     }
 
     // If memory doesn't exist, add it to the store with default content
-    await store.put(namespace, "user_preferences", { value: defaultContent });
+    await store.put(namespace, "user_preferences", { memoryContent: defaultContent });
     return defaultContent;
   } catch (error) {
     console.error("Error getting memory:", error);
     // Return default content if there's an error
-    await store.put(namespace, "user_preferences", { value: defaultContent });
+    await store.put(namespace, "user_preferences", { memoryContent: defaultContent });
     return defaultContent;
   }
 }
@@ -221,23 +213,23 @@ async function getMemory(
  * @param messages List of messages to update the memory with
  */
 async function updateMemory(
-  store: InMemoryStore,
+  store: BaseStore,
   namespace: string[],
-  messages: Message[],
+  messages: BaseMessage[],
 ): Promise<void> {
   try {
     // Get the existing memory
     const userPreferences = await store.get(namespace, "user_preferences");
     const currentProfile = userPreferences
-      ? (userPreferences.value as unknown as string)
+      ? (userPreferences.value.memoryContent)
       : "";
 
     // Convert Message[] to format expected by the LLM
     const formattedMessages = messages.map((msg) => ({
       role:
-        msg.type === "human"
+        msg.getType() === "human"
           ? "user"
-          : msg.type === "ai"
+          : msg.getType() === "ai"
             ? "assistant"
             : "system",
       content:
@@ -247,13 +239,13 @@ async function updateMemory(
     }));
 
     // Initialize chat model
-    const llm = await initChatModel("openai:gpt-4");
+    const llm = await initChatModel("openai:gpt-4o");
     const llmWithStructuredOutput = llm.withStructuredOutput<UserPreferences>({
       schema: {
-        type: "object",
+        role: "object",
         properties: {
-          preferences: { type: "string" },
-          justification: { type: "string" },
+          preferences: { role: "string" },
+          justification: { role: "string" },
         },
         required: ["preferences"],
       },
@@ -261,7 +253,7 @@ async function updateMemory(
 
     // Create system message with memory update instructions
     const systemMsg = {
-      type: "system" as const,
+      role: "system",
       content: MEMORY_UPDATE_INSTRUCTIONS.replace(
         "{current_profile}",
         currentProfile,
@@ -270,7 +262,7 @@ async function updateMemory(
 
     // Create user message instructing to update memory
     const userMsg = {
-      type: "human" as const,
+      role: "human",
       content:
         "Think carefully and update the memory profile based upon these user messages:",
     };
@@ -278,11 +270,11 @@ async function updateMemory(
     // Convert the formatted messages to Message objects
     const messagesForLLM = formattedMessages.map((msg) => {
       if (msg.role === "user") {
-        return { type: "human" as const, content: msg.content };
+        return { role: "human", content: msg.content };
       } else if (msg.role === "assistant") {
-        return { type: "ai" as const, content: msg.content, tool_calls: [] };
+        return { role: "ai", content: msg.content, tool_calls: [] };
       } else {
-        return { type: "system" as const, content: msg.content };
+        return { role: "system", content: msg.content };
       }
     });
 
@@ -295,7 +287,7 @@ async function updateMemory(
 
     // Save the updated memory to the store
     await store.put(namespace, "user_preferences", {
-      value: result.preferences,
+      memoryContent: result.preferences,
     });
   } catch (error) {
     console.error("Error updating memory:", error);
@@ -305,49 +297,51 @@ async function updateMemory(
 /**
  * Create the triage router node with memory integration
  */
-export const createTriageRouterNode = (
-  llm: ChatModel,
-  store: InMemoryStore,
-) => {
-  return async (state: AgentStateType): Promise<Command> => {
-    try {
-      const { email_input } = state;
-      const parseResult = parseEmail(email_input);
+export const triageRouterNode = async (state: EmailAgentHITLStateType, config: LangGraphRunnableConfig): Promise<Command> => {
+  const { llm } = await setupLLMAndTools();
+  const { store } = config;
+  if (!store) {
+    throw new Error("Store is required for triage router node");
+  }
 
-      // Validate parsing result
-      if (!parseResult || typeof parseResult !== "object") {
-        throw new Error("Invalid email parsing result");
-      }
+  try {
+    const { email_input } = state;
+    const parseResult = parseEmail(email_input);
 
-      const { author, to, subject, emailThread } = parseResult;
+    // Validate parsing result
+    if (!parseResult || typeof parseResult !== "object") {
+      throw new Error("Invalid email parsing result");
+    }
 
-      // Get triage preferences from memory
-      const triagePreferences = await getMemory(
-        store,
-        ["email_assistant", "triage_preferences"],
-        defaultTriageInstructions,
-      );
+    const { author, to, subject, emailThread } = parseResult;
 
-      const systemPrompt = triageSystemPrompt
-        .replace("{background}", defaultBackground)
-        .replace("{triage_instructions}", triagePreferences);
+    // Get triage preferences from memory
+    const triagePreferences = await getMemory(
+      store,
+      ["email_assistant", "triage_preferences"],
+      defaultTriageInstructions,
+    );
 
-      const userPrompt = triageUserPrompt
-        .replace("{author}", author)
-        .replace("{to}", to)
-        .replace("{subject}", subject)
-        .replace("{email_thread}", emailThread);
+    const systemPrompt = triageSystemPrompt
+      .replace("{background}", defaultBackground)
+      .replace("{triage_instructions}", triagePreferences);
 
-      // Create email markdown for Agent Inbox in case of notification
-      const emailMarkdown = formatEmailMarkdown(
-        subject,
-        author,
-        to,
-        emailThread,
-      );
+    const userPrompt = triageUserPrompt
+      .replace("{author}", author)
+      .replace("{to}", to)
+      .replace("{subject}", subject)
+      .replace("{email_thread}", emailThread);
 
-      // Add a clear instruction for a simple string response rather than JSON
-      const simplifiedSystemPrompt = `${systemPrompt}
+    // Create email markdown for Agent Inbox in case of notification
+    const emailMarkdown = formatEmailMarkdown(
+      subject,
+      author,
+      to,
+      emailThread,
+    );
+
+    // Add a clear instruction for a simple string response rather than JSON
+    const simplifiedSystemPrompt = `${systemPrompt}
 
 After analyzing this email, determine if it should be:
 1. "ignore" - Not important, no action needed
@@ -356,90 +350,99 @@ After analyzing this email, determine if it should be:
 
 Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
 
-      // Use the regular LLM with a simplified prompt
-      const response = await llm.invoke([
-        { type: "system", content: simplifiedSystemPrompt },
-        { type: "human", content: userPrompt },
-      ]);
+    // Use the regular LLM with a simplified prompt
+    const response = await llm.invoke([
+      { role: "system", content: simplifiedSystemPrompt },
+      { role: "human", content: userPrompt },
+    ]);
 
-      // Extract the classification from the simple response
-      let classification: "ignore" | "respond" | "notify";
-      const responseText = (response.content || "")
-        .toString()
-        .toLowerCase()
-        .trim();
+    // Extract the classification from the simple response
+    let classification: "ignore" | "respond" | "notify";
+    const responseText = (response.content || "")
+      .toString()
+      .toLowerCase()
+      .trim();
 
-      if (responseText.includes("respond")) {
-        classification = "respond";
-      } else if (responseText.includes("notify")) {
-        classification = "notify";
-      } else if (responseText.includes("ignore")) {
-        classification = "ignore";
-      } else {
-        console.log(
-          `Unrecognized classification: "${responseText}". Defaulting to notify.`,
-        );
-        classification = "notify";
-      }
+    if (responseText.includes("respond")) {
+      classification = "respond";
+    } else if (responseText.includes("notify")) {
+      classification = "notify";
+    } else if (responseText.includes("ignore")) {
+      classification = "ignore";
+    } else {
+      console.log(
+        `Unrecognized classification: "${responseText}". Defaulting to notify.`,
+      );
+      classification = "notify";
+    }
 
-      let goto: "triage_interrupt_handler" | "response_agent" | typeof END =
-        END;
-      let update: Partial<AgentStateType> = {
-        classification_decision: classification,
-      };
-
-      if (classification === "respond") {
-        console.log(
-          "📧 Classification: RESPOND - This email requires a response",
-        );
-        goto = "response_agent";
-        update.messages = [
-          { type: "human", content: `Respond to the email: ${emailMarkdown}` },
-        ];
-      } else if (classification === "notify") {
-        console.log(
-          "🔔 Classification: NOTIFY - This email contains important information",
-        );
-        goto = "triage_interrupt_handler";
-      } else if (classification === "ignore") {
-        console.log(
-          "🚫 Classification: IGNORE - This email can be safely ignored",
-        );
-        goto = END;
-      } else {
-        // Default to "ignore" if classification is not recognized
-        console.log("❓ Classification: UNKNOWN - Treating as IGNORE");
-        goto = END;
-        update.classification_decision = "ignore";
-      }
-
+    if (classification === "respond") {
+      console.log(
+        "📧 Classification: RESPOND - This email requires a response",
+      );
       return new Command({
-        goto,
-        update,
+        goto: "response_agent",
+        update: {
+          classification_decision: classification,
+          messages: { role: "human", content: `Respond to the email: ${emailMarkdown}` },
+        },
       });
-    } catch (error: any) {
-      console.error("Error in triage router:", error);
+    } else if (classification === "notify") {
+      console.log(
+        "🔔 Classification: NOTIFY - This email contains important information",
+      );
+      return new Command({
+        goto: "triage_interrupt_handler",
+        update: {
+          classification_decision: classification,
+        },
+      });
+    } else if (classification === "ignore") {
+      console.log(
+        "🚫 Classification: IGNORE - This email can be safely ignored",
+      );
       return new Command({
         goto: END,
         update: {
-          classification_decision: "error",
-          messages: [
-            {
-              type: "system",
-              content: `Error in triage router: ${error.message}`,
-            },
-          ],
+          classification_decision: classification,
         },
       });
     }
-  };
+
+    // Default to "ignore" if classification is not recognized
+    console.log("❓ Classification: UNKNOWN - Treating as IGNORE");
+    return new Command({
+      goto: END,
+      update: {
+        classification_decision: "ignore",
+      },
+    });
+  } catch (error: any) {
+    console.error("Error in triage router:", error);
+    return new Command({
+      goto: END,
+      update: {
+        classification_decision: "error",
+        messages: [
+          {
+            role: "system",
+            content: `Error in triage router: ${error.message}`,
+          },
+        ],
+      },
+    });
+  }
 };
 
 /**
  * Create the triage interrupt handler node with memory integration
  */
-export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
-  return async (state: AgentStateType): Promise<Command> => {
+export const triageInterruptHandlerNode = async (state: EmailAgentHITLStateType, config: LangGraphRunnableConfig): Promise<Command> => {
+  const { store } = config;
+  if (!store) {
+    throw new Error("Store is required for triage interrupt handler node");
+  }
+
     // Parse the email input
     const parseResult = parseEmail(state.email_input);
 
@@ -457,46 +460,41 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
       // Create messages
       const messages = [
         {
-          type: "human" as const,
+          role: "human",
           content: `Email to notify user about: ${emailMarkdown}`,
         },
       ];
 
-      // Create interrupt for Agent Inbox
-      const { interrupt } = await import("@langchain/langgraph");
-
-      const humanReview = await interrupt({
-        question: `Email requires attention: ${state.classification_decision || "notify"}`,
-        email: emailMarkdown,
-        options: {
-          allowIgnore: true,
-          allowRespond: true,
-          allowEdit: false,
-          allowAccept: false,
+      const humanReview = interrupt<HumanInterrupt, HumanResponse[]>({
+        action_request: {
+          action: `Email requires attention: ${state.classification_decision || "notify"}`,
+          args: {},
         },
-      });
+        description: emailMarkdown,
+        config: {
+          allow_ignore: true,
+          allow_respond: true,
+          allow_edit: false,
+          allow_accept: false,
+        },
+      })[0];
 
       // Initialize return values
-      let goto: "response_agent" | typeof END = END;
-      const returnMessages = [...messages];
+      const returnMessages: Messages = [...messages];
 
       // Handle different response types
-      const reviewAction = humanReview.action;
-      const reviewData = humanReview.data;
-
-      if (reviewAction === "continue" || reviewAction === "feedback") {
-        // User wants to respond to the email
-        if (reviewData) {
-          returnMessages.push({
-            type: "human" as const,
-            content: `User wants to reply to the email. Use this feedback to respond: ${reviewData}`,
-          });
-        }
-
+      const reviewAction = humanReview.type;
+      const reviewData = humanReview.args;
+    
+      if (reviewAction === "response" && reviewData) {
+        returnMessages.push({
+          role: "human",
+          content: `User wants to reply to the email. Use this feedback to respond: ${reviewData}`,
+        });
         // Update memory with feedback
         const memoryUpdateMessages = [
           {
-            type: "human" as const,
+            role: "human",
             content:
               "The user decided to respond to the email, so update the triage preferences to capture this.",
           },
@@ -506,15 +504,22 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
         await updateMemory(
           store,
           ["email_assistant", "triage_preferences"],
-          memoryUpdateMessages,
+          addMessages([], memoryUpdateMessages),
         );
 
-        goto = "response_agent";
-      } else {
+        return new Command({
+          goto: "response_agent",
+          update: {
+            messages: returnMessages,
+          },
+        });
+      }
+
+      if (reviewAction === "ignore") {
         // User ignored the email or other action
         const memoryUpdateMessages = [
           {
-            type: "human" as const,
+            role: "human",
             content:
               "The user decided to ignore the email even though it was classified as notify. Update triage preferences to capture this.",
           },
@@ -525,19 +530,18 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
         await updateMemory(
           store,
           ["email_assistant", "triage_preferences"],
-          memoryUpdateMessages,
+          addMessages([], memoryUpdateMessages),
         );
 
-        goto = END;
+        return new Command({
+          goto: END,
+          update: {
+            messages: returnMessages,
+          },
+        });
       }
 
-      // Return Command with goto and update
-      return new Command({
-        goto,
-        update: {
-          messages: returnMessages,
-        },
-      });
+      throw new Error(`Unknown review action: ${reviewAction}`)
     } catch (error: any) {
       console.error("Error with triage interrupt handler:", error);
       return new Command({
@@ -545,7 +549,7 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
         update: {
           messages: [
             {
-              type: "system" as const,
+              role: "system",
               content: `Error in triage interrupt: ${error.message}`,
             },
           ],
@@ -553,16 +557,18 @@ export const createTriageInterruptHandlerNode = (store: InMemoryStore) => {
       });
     }
   };
-};
 
 /**
  * Create the LLM call node with memory integration
  */
-export const createLLMCallNode = (
-  llmWithTools: ChatModel,
-  store: InMemoryStore,
-) => {
-  return async (state: AgentStateType) => {
+export const createLLMCallNode = async (state: EmailAgentHITLStateType, config: LangGraphRunnableConfig) => {
+  const { llmWithTools } = await setupLLMAndTools();
+
+  const { store } = config;
+  if (!store) {
+    throw new Error("Store is required for LLM call node");
+  }
+
     try {
       // Get memory preferences
       const calPreferences = await getMemory(
@@ -586,7 +592,7 @@ export const createLLMCallNode = (
 
       // Create full message history for the agent
       const allMessages = [
-        { type: "system" as const, content: systemPrompt },
+        { role: "system", content: systemPrompt },
         ...state.messages,
       ];
 
@@ -595,33 +601,33 @@ export const createLLMCallNode = (
 
       // Return the AIMessage result
       return {
-        messages: [result as unknown as Message],
+        messages: result,
       };
     } catch (error: any) {
       console.error("Error in LLM call:", error);
       return {
         messages: [
           {
-            type: "ai" as const,
+            role: "ai",
             content: `Error calling model: ${error.message}`,
-            tool_calls: [],
           },
         ],
       };
     }
   };
-};
 
 /**
  * Create the interrupt handler node with memory updates
  */
-export const createInterruptHandlerNode = (
-  toolsByName: Record<string, StructuredTool>,
-  store: InMemoryStore,
-) => {
-  return async (state: AgentStateType): Promise<Command> => {
+export const createInterruptHandlerNode = async (state: EmailAgentHITLStateType, config: LangGraphRunnableConfig): Promise<Command> => {
+  const { toolsByName } = await setupLLMAndTools();
+    const { store } = config;
+    if (!store) {
+        throw new Error("Store is required for interrupt handler node");
+    }
+
     // Store messages to be returned
-    const result: Message[] = [];
+    const result: BaseMessageLike[] = [];
 
     // Default goto is llm_call
     let goto: typeof END | "llm_call" = "llm_call";
@@ -637,7 +643,7 @@ export const createInterruptHandlerNode = (
     ) {
       return new Command({
         goto,
-        update: { messages: result },
+        update: { messages: [] },
       });
     }
 
@@ -651,7 +657,7 @@ export const createInterruptHandlerNode = (
     for (const toolCall of lastMessage.tool_calls) {
       // Skip if we've already processed one tool call to allow proper resuming
       if (processedOneToolCall) {
-        continue;
+        break;
       }
 
       // Get or create a valid tool call ID
@@ -666,13 +672,13 @@ export const createInterruptHandlerNode = (
         if (!tool) {
           console.error(`Tool ${toolCall.name} not found`);
           result.push({
-            type: "tool",
+            role: "tool",
             content: `Error: Tool ${toolCall.name} not found`,
             tool_call_id: callId,
           });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
-          continue;
+          break;
         }
 
         try {
@@ -685,23 +691,24 @@ export const createInterruptHandlerNode = (
           // Invoke the tool with properly formatted arguments
           const observation = await tool.invoke(parsedArgs);
           result.push({
-            type: "tool",
+            role: "tool",
             content: observation,
             tool_call_id: callId,
           });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
+          break;
         } catch (error: any) {
           console.error(`Error executing tool ${toolCall.name}:`, error);
           result.push({
-            type: "tool",
+            role: "tool",
             content: `Error executing tool: ${error.message}`,
             tool_call_id: callId,
           });
           processedToolCallIds.add(callId);
           processedOneToolCall = true;
+          break;
         }
-        continue;
       }
 
       // Get original email from email_input in state
@@ -720,7 +727,7 @@ export const createInterruptHandlerNode = (
       );
 
       // Format tool call for display and prepend the original email
-      const toolDisplay = formatForDisplay(state, toolCall);
+      const toolDisplay = formatForDisplay(toolCall);
       const description = originalEmailMarkdown + toolDisplay;
 
       try {
@@ -760,7 +767,7 @@ export const createInterruptHandlerNode = (
 
           const observation = await tool.invoke(parsedArgs);
           result.push({
-            type: "tool",
+            role: "tool",
             content: observation,
             tool_call_id: callId,
           });
@@ -795,7 +802,7 @@ export const createInterruptHandlerNode = (
 
           // Add the tool response
           result.push({
-            type: "tool",
+            role: "tool",
             content: observation,
             tool_call_id: callId,
           });
@@ -808,8 +815,9 @@ export const createInterruptHandlerNode = (
               store,
               ["email_assistant", "response_preferences"],
               [
+                // Replace this with new HumanMessage
                 {
-                  type: "human",
+                  role: "human",
                   content: `User edited the email response. Here is the initial email generated by the assistant: ${initialToolCall}. Here is the edited email: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
                 },
               ],
@@ -820,7 +828,7 @@ export const createInterruptHandlerNode = (
               ["email_assistant", "cal_preferences"],
               [
                 {
-                  type: "human",
+                  role: "human",
                   content: `User edited the calendar invitation. Here is the initial calendar invitation generated by the assistant: ${initialToolCall}. Here is the edited calendar invitation: ${JSON.stringify(editedArgs)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
                 },
               ],
@@ -830,7 +838,7 @@ export const createInterruptHandlerNode = (
           if (toolCall.name === "write_email") {
             // Don't execute the tool, and tell the agent how to proceed
             result.push({
-              type: "tool",
+              role: "tool",
               content:
                 "User ignored this email draft. Ignore this email and end the workflow.",
               tool_call_id: callId,
@@ -849,7 +857,7 @@ export const createInterruptHandlerNode = (
                 ...state.messages,
                 ...result,
                 {
-                  type: "human",
+                  role: "human",
                   content: `The user ignored the email draft. That means they did not want to respond to the email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
                 },
               ],
@@ -857,7 +865,7 @@ export const createInterruptHandlerNode = (
           } else if (toolCall.name === "schedule_meeting") {
             // Don't execute the tool, and tell the agent how to proceed
             result.push({
-              type: "tool",
+              role: "tool",
               content:
                 "User ignored this calendar meeting draft. Ignore this email and end the workflow.",
               tool_call_id: callId,
@@ -876,7 +884,7 @@ export const createInterruptHandlerNode = (
                 ...state.messages,
                 ...result,
                 {
-                  type: "human",
+                  role: "human",
                   content: `The user ignored the calendar meeting draft. That means they did not want to schedule a meeting for this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
                 },
               ],
@@ -884,7 +892,7 @@ export const createInterruptHandlerNode = (
           } else if (toolCall.name === "Question") {
             // Don't execute the tool, and tell the agent how to proceed
             result.push({
-              type: "tool",
+              role: "tool",
               content:
                 "User ignored this question. Ignore this email and end the workflow.",
               tool_call_id: callId,
@@ -903,7 +911,7 @@ export const createInterruptHandlerNode = (
                 ...state.messages,
                 ...result,
                 {
-                  type: "human",
+                  role: "human",
                   content: `The user ignored the Question. That means they did not want to answer the question or deal with this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
                 },
               ],
@@ -913,7 +921,7 @@ export const createInterruptHandlerNode = (
       } catch (error: any) {
         console.error(`Error processing tool ${toolCall.name}:`, error);
         result.push({
-          type: "tool",
+          role: "tool",
           content: `Error processing tool: ${error.message}`,
           tool_call_id: callId,
         });
@@ -941,12 +949,8 @@ export const memoryStore = new InMemoryStore();
 // Initialize and export the agent graph
 export const initializeEmailAssistant = async () => {
   // Setup LLMs and tools
-  const { llm, llmWithTools, tools, toolsByName } = await setupLLMAndTools();
+  const { llm, llmWithTools, toolsByName } = await setupLLMAndTools();
 
-  // Create the nodes
-  const triageRouterNode = createTriageRouterNode(llm, memoryStore);
-  const triageInterruptHandlerNode =
-    createTriageInterruptHandlerNode(memoryStore);
   const llmCallNode = createLLMCallNode(llmWithTools, memoryStore);
   const interruptHandlerNode = createInterruptHandlerNode(
     toolsByName,
