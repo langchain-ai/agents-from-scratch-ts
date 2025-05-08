@@ -1,7 +1,7 @@
-import { ChatOpenAI } from '@langchain/openai';
+import { ChatOpenAI } from "@langchain/openai";
 
 declare global {
   var criteriaEvalLLM: ChatOpenAI;
 }
 
-export {}; 
+export {};

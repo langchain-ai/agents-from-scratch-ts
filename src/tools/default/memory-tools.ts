@@ -1,6 +1,6 @@
 /**
  * Memory-related tools for the Email Assistant with HITL and Memory
- * 
+ *
  * These tools allow the agent to retrieve information from the memory store.
  */
 
@@ -19,8 +19,8 @@ export const backgroundTool = tool(
   {
     name: "background",
     description: "Get background information about the user",
-    schema: z.object({}).describe("This tool doesn't take any arguments")
-  }
+    schema: z.object({}).describe("This tool doesn't take any arguments"),
+  },
 );
 
 /**
@@ -35,8 +35,8 @@ export const calPreferencesTool = tool(
   {
     name: "cal_preferences",
     description: "Get the user's calendar preferences",
-    schema: z.object({}).describe("This tool doesn't take any arguments")
-  }
+    schema: z.object({}).describe("This tool doesn't take any arguments"),
+  },
 );
 
 /**
@@ -51,8 +51,8 @@ export const responsePreferencesTool = tool(
   {
     name: "response_preferences",
     description: "Get the user's response style preferences",
-    schema: z.object({}).describe("This tool doesn't take any arguments")
-  }
+    schema: z.object({}).describe("This tool doesn't take any arguments"),
+  },
 );
 
 /**
@@ -66,7 +66,7 @@ export const questionTool = tool(
     name: "Question",
     description: "Ask the user a follow-up question",
     schema: z.object({
-      content: z.string().describe("The question to ask the user")
-    })
-  }
-); 
+      content: z.string().describe("The question to ask the user"),
+    }),
+  },
+);

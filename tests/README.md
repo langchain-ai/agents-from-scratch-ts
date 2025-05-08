@@ -46,7 +46,7 @@ AGENT_MODULE=email_assistant_hitl_memory pnpm test
 This project uses ESM modules which required specific Jest configuration:
 
 1. The setup file is in `.mjs` format to support ESM modules
-2. Jest is configured to use the proper ESM preset 
+2. Jest is configured to use the proper ESM preset
 3. Global types are declared in a separate `.d.ts` file
 
 ## Mock Assistant Implementation
@@ -115,5 +115,5 @@ To add new utility functions:
 ## Notes
 
 - Tests may take longer to run due to LLM calls
-- Default timeout is set to 2 minutes for LLM-based tests 
-- The mock assistant approach allows for faster tests without actual LLM calls 
+- Default timeout is set to 2 minutes for LLM-based tests
+- The mock assistant approach allows for faster tests without actual LLM calls

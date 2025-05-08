@@ -8,4 +8,4 @@
     "hitlEmailAssistantMemory": "./scripts/email_assistant_hitl_memory.ts:getHitlEmailAssistantWithMemory"
   },
   "env": ".env"
-} 
+}

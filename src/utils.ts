@@ -1,8 +1,6 @@
 import { EmailData } from "./schemas.js";
-import type { Message } from '@langchain/langgraph-sdk';
-import type { ToolCall } from '@langchain/core/messages/tool';
-
-
+import type { Message } from "@langchain/langgraph-sdk";
+import type { ToolCall } from "@langchain/core/messages/tool";
 
 /**
  * Email Assistant utilities
@@ -22,7 +20,12 @@ interface Example {
  * @param email The email data to parse
  * @returns An object with { author, to, subject, emailThread }
  */
-export function parseEmail(email: EmailData): { author: string; to: string; subject: string; emailThread: string } {
+export function parseEmail(email: EmailData): {
+  author: string;
+  to: string;
+  subject: string;
+  emailThread: string;
+} {
   try {
     // Extract key information from email data
     const author = email.from_email;
@@ -49,7 +52,7 @@ export function formatEmailMarkdown(
   subject: string,
   author: string,
   to: string,
-  emailThread: string
+  emailThread: string,
 ): string {
   return `## Email: ${subject}
 
@@ -65,12 +68,12 @@ ${emailThread}`;
  * @param toolCall The tool call to format
  */
 export function formatForDisplay(
-  state: { messages: Message[] }, 
-  toolCall: ToolCall
+  state: { messages: Message[] },
+  toolCall: ToolCall,
 ): string {
   // Initialize empty display
   let display = "";
-  
+
   // Add tool call information based on tool type
   switch (toolCall.name) {
     case "write_email":
@@ -82,17 +85,17 @@ export function formatForDisplay(
 ${toolCall.args.content}
 `;
       break;
-    
+
     case "schedule_meeting":
       display += `# Calendar Invite
 
 **Meeting**: ${toolCall.args.subject}
-**Attendees**: ${toolCall.args.attendees?.join(', ')}
+**Attendees**: ${toolCall.args.attendees?.join(", ")}
 **Duration**: ${toolCall.args.duration_minutes} minutes
 **Day**: ${toolCall.args.preferred_day}
 `;
       break;
-    
+
     case "Question":
       // Special formatting for questions to make them clear
       display += `# Question for User
@@ -100,7 +103,7 @@ ${toolCall.args.content}
 ${toolCall.args.content}
 `;
       break;
-    
+
     default:
       // Generic format for other tools
       display += `# Tool Call: ${toolCall.name}
@@ -109,7 +112,7 @@ Arguments:
 ${JSON.stringify(toolCall.args, null, 2)}
 `;
   }
-  
+
   return display;
 }
 
@@ -118,28 +121,31 @@ ${JSON.stringify(toolCall.args, null, 2)}
  */
 export function extractMessageContent(message: any): string {
   const content = message.content;
-  
+
   // Check for recursion marker in string
-  if (typeof content === 'string' && content.includes('<Recursion on AIMessage with id=')) {
+  if (
+    typeof content === "string" &&
+    content.includes("<Recursion on AIMessage with id=")
+  ) {
     return "[Recursive content]";
   }
-  
+
   // Handle string content
-  if (typeof content === 'string') {
+  if (typeof content === "string") {
     return content;
   }
-    
+
   // Handle list content (AIMessage format)
   else if (Array.isArray(content)) {
     const textParts: string[] = [];
     for (const item of content) {
-      if (typeof item === 'object' && item !== null && 'text' in item) {
+      if (typeof item === "object" && item !== null && "text" in item) {
         textParts.push(item.text);
       }
     }
     return textParts.join("\n");
   }
-  
+
   // Don't try to handle recursion to avoid infinite loops
   // Just return string representation instead
   return String(content);
@@ -150,26 +156,26 @@ export function extractMessageContent(message: any): string {
  */
 export function formatFewShotExamples(examples: Example[]): string {
   const formatted: string[] = [];
-  
+
   for (const example of examples) {
     // Parse the example value string into components
-    const parts = example.value.split('Original routing:');
+    const parts = example.value.split("Original routing:");
     const emailPart = parts[0].trim();
-    
-    const routingParts = parts[1].split('Correct routing:');
+
+    const routingParts = parts[1].split("Correct routing:");
     const originalRouting = routingParts[0].trim();
     const correctRouting = routingParts[1].trim();
-    
+
     // Format into clean string
     const formattedExample = `Example:
 Email: ${emailPart}
 Original Classification: ${originalRouting}
 Correct Classification: ${correctRouting}
 ---`;
-    
+
     formatted.push(formattedExample);
   }
-  
+
   return formatted.join("\n");
 }
 
@@ -177,10 +183,12 @@ Correct Classification: ${correctRouting}
  * Type guard for checking if an object is a ToolCall
  */
 export function isToolCall(item: any): item is ToolCall {
-  return typeof item === 'object' && 
-         item !== null && 
-         'name' in item && 
-         'args' in item;
+  return (
+    typeof item === "object" &&
+    item !== null &&
+    "name" in item &&
+    "args" in item
+  );
 }
 
 /**
@@ -188,25 +196,25 @@ export function isToolCall(item: any): item is ToolCall {
  */
 export function extractToolCalls(messages: any[]): string[] {
   const toolCallNames: string[] = [];
-  
+
   for (const message of messages) {
     // Check if message is an object and has tool_calls
-    if (typeof message === 'object' && message !== null) {
+    if (typeof message === "object" && message !== null) {
       // Handle plain objects
       if (message.tool_calls && Array.isArray(message.tool_calls)) {
-        toolCallNames.push(...message.tool_calls.map(
-          (call: any) => call.name.toLowerCase())
+        toolCallNames.push(
+          ...message.tool_calls.map((call: any) => call.name.toLowerCase()),
         );
       }
       // Handle class instances with toolCalls property
-      else if ('toolCalls' in message && Array.isArray(message.toolCalls)) {
-        toolCallNames.push(...message.toolCalls.map(
-          (call: any) => call.name.toLowerCase())
+      else if ("toolCalls" in message && Array.isArray(message.toolCalls)) {
+        toolCallNames.push(
+          ...message.toolCalls.map((call: any) => call.name.toLowerCase()),
         );
       }
     }
   }
-  
+
   return toolCallNames;
 }
 
@@ -216,63 +224,69 @@ export function extractToolCalls(messages: any[]): string[] {
  * since we don't use stdout redirection.
  */
 export function formatMessagesString(messages: Message[]): string {
-  return messages.map(message => {
-    let prefix = '';
-    
-    // Determine prefix based on role
-    if ('role' in message && message.role) {
-      switch (message.role) {
-        case 'user':
-          prefix = '🧑 Human: ';
-          break;
-        case 'assistant':
-          prefix = '🤖 Assistant: ';
-          break;
-        case 'system':
-          prefix = '🧠 System: ';
-          break;
-        case 'tool':
-          prefix = '🛠️ Tool: ';
-          break;
-        default:
-          prefix = `${message.role}: `;
+  return messages
+    .map((message) => {
+      let prefix = "";
+
+      // Determine prefix based on role
+      if ("role" in message && message.role) {
+        switch (message.role) {
+          case "user":
+            prefix = "🧑 Human: ";
+            break;
+          case "assistant":
+            prefix = "🤖 Assistant: ";
+            break;
+          case "system":
+            prefix = "🧠 System: ";
+            break;
+          case "tool":
+            prefix = "🛠️ Tool: ";
+            break;
+          default:
+            prefix = `${message.role}: `;
+        }
       }
-    }
-    
-    // Format content
-    let content = typeof message.content === 'string' 
-      ? message.content 
-      : JSON.stringify(message.content);
-    
-    // Only AIMessage can have tool_calls or toolCalls
-    if (message.type === 'ai') {
-      const aiMsg = message as import('@langchain/langgraph-sdk').AIMessage;
-      const toolCalls = aiMsg.tool_calls || (aiMsg as any).toolCalls;
-      if (toolCalls && toolCalls.length > 0) {
-        const toolCallsStr = toolCalls.map((tc: ToolCall) => 
-          `\n  Tool: ${tc.name}\n  Args: ${JSON.stringify(tc.args, null, 2)}`
-        ).join('\n');
-        content += `\n[Tool Calls: ${toolCallsStr}]`;
+
+      // Format content
+      let content =
+        typeof message.content === "string"
+          ? message.content
+          : JSON.stringify(message.content);
+
+      // Only AIMessage can have tool_calls or toolCalls
+      if (message.type === "ai") {
+        const aiMsg = message as import("@langchain/langgraph-sdk").AIMessage;
+        const toolCalls = aiMsg.tool_calls || (aiMsg as any).toolCalls;
+        if (toolCalls && toolCalls.length > 0) {
+          const toolCallsStr = toolCalls
+            .map(
+              (tc: ToolCall) =>
+                `\n  Tool: ${tc.name}\n  Args: ${JSON.stringify(tc.args, null, 2)}`,
+            )
+            .join("\n");
+          content += `\n[Tool Calls: ${toolCallsStr}]`;
+        }
       }
-    }
-    
-    return `${prefix}${content}`;
-  }).join('\n\n');
+
+      return `${prefix}${content}`;
+    })
+    .join("\n\n");
 }
 
 /**
  * Format email with optional parameters
  */
 export function formatEmailOptional(
-  subject?: string, 
-  author?: string, 
-  to?: string, 
-  emailThread?: string
+  subject?: string,
+  author?: string,
+  to?: string,
+  emailThread?: string,
 ): string {
   return formatEmailMarkdown(
     subject ?? "No Subject",
     author ?? "Unknown Sender",
     to ?? "Unknown Recipient",
-    emailThread ?? ""
+    emailThread ?? "",
   );
 }

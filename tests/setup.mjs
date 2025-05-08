@@ -1,6 +1,6 @@
-import { config } from 'dotenv';
-import { ChatOpenAI } from '@langchain/openai';
-import { beforeAll } from '@jest/globals';
+import { config } from "dotenv";
+import { ChatOpenAI } from "@langchain/openai";
+import { beforeAll } from "@jest/globals";
 
 // Load environment variables
 config();
@@ -8,8 +8,8 @@ config();
 // Set up global model for evaluations
 // @ts-ignore - Global types will be picked up from setup.d.ts
 globalThis.criteriaEvalLLM = new ChatOpenAI({
-  modelName: 'gpt-4o',
-  temperature: 0
+  modelName: "gpt-4o",
+  temperature: 0,
 });
 
 // This runs before all tests
@@ -19,4 +19,4 @@ beforeAll(() => {
     process.env.LANGCHAIN_TRACING_V2 = "true";
     process.env.LANGCHAIN_CALLBACKS_BACKGROUND = "true";
   }
-}); 
+});

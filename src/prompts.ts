@@ -1,5 +1,3 @@
-
-
 // Standard tool descriptions for insertion into prompts
 export const STANDARD_TOOLS_PROMPT = `
 1. triage_email(ignore, notify, respond) - Triage emails into one of three categories
@@ -7,7 +5,7 @@ export const STANDARD_TOOLS_PROMPT = `
 3. schedule_meeting(attendees, subject, duration_minutes, preferred_day, start_time) - Schedule calendar meetings where preferred_day is a datetime object
 4. check_calendar_availability(day) - Check available time slots for a given day
 5. Done - E-mail has been sent
-`
+`;
 
 // Tool descriptions for HITL workflow
 export const HITL_TOOLS_PROMPT = `
@@ -16,7 +14,7 @@ export const HITL_TOOLS_PROMPT = `
 3. check_calendar_availability(day) - Check available time slots for a given day
 4. Question(content) - Ask the user any follow-up questions
 5. Done - E-mail has been sent
-`
+`;
 
 // Tool descriptions for HITL with memory workflow
 export const HITL_MEMORY_TOOLS_PROMPT = `
@@ -26,7 +24,7 @@ export const HITL_MEMORY_TOOLS_PROMPT = `
 4. Question(content) - Ask the user any follow-up questions
 5. background - Search for background information about the user and their contacts 
 6. Done - E-mail has been sent
-`
+`;
 
 // Tool descriptions for agent workflow without triage
 export const AGENT_TOOLS_PROMPT = `
@@ -34,7 +32,7 @@ export const AGENT_TOOLS_PROMPT = `
 2. schedule_meeting(attendees, subject, duration_minutes, preferred_day, start_time) - Schedule calendar meetings where preferred_day is a datetime object
 3. check_calendar_availability(day) - Check available time slots for a given day
 4. Done - E-mail has been sent
-`
+`;
 
 export const agentSystemPromptBaseline = `
 <Role>
@@ -53,7 +51,7 @@ When handling emails, follow these steps:
 3. For responding to the email, draft a response email with the write_email tool
 4. For meeting requests, use the check_calendar_availability tool to find open time slots
 5. To schedule a meeting, use the schedule_meeting tool with a datetime object for the preferred_day parameter
-   - Today's date is ${new Date().toISOString().split('T')[0]} - use this for scheduling meetings accurately
+   - Today's date is ${new Date().toISOString().split("T")[0]} - use this for scheduling meetings accurately
 6. If you scheduled a meeting, then draft a short response email using the write_email tool
 7. After using the write_email tool, the task is complete 
 8. If you have sent the email, then use the Done tool to indicate that the task is complete
@@ -76,7 +74,7 @@ When handling emails, follow these steps:
 </Calendar Preferences>
 `;
 
-// Agentic workflow triage prompt 
+// Agentic workflow triage prompt
 export const triageSystemPrompt = `
 <Role>
 Your role is to triage incoming emails based upon instructs and background information below.
@@ -99,7 +97,7 @@ Classify the below email into one of these categories.
 </Rules>
 `;
 
-// Agentic workflow triage user prompt 
+// Agentic workflow triage user prompt
 export const triageUserPrompt = `
 Please determine how to handle the below email thread:
 
@@ -108,7 +106,7 @@ To: {to}
 Subject: {subject}
 {email_thread}`;
 
-// Agentic workflow prompt 
+// Agentic workflow prompt
 export const agentSystemPrompt = `
 <Role>
 You are a top-notch executive assistant who cares about helping your executive perform as well as possible.
@@ -126,7 +124,7 @@ When handling emails, follow these steps:
 3. For responding to the email, draft a response email with the write_email tool
 4. For meeting requests, use the check_calendar_availability tool to find open time slots
 5. To schedule a meeting, use the schedule_meeting tool with a datetime object for the preferred_day parameter
-   - Today's date is ${new Date().toISOString().split('T')[0]} - use this for scheduling meetings accurately
+   - Today's date is ${new Date().toISOString().split("T")[0]} - use this for scheduling meetings accurately
 6. If you scheduled a meeting, then draft a short response email using the write_email tool
 7. After using the write_email tool, the task is complete
 8. If you have sent the email, then use the Done tool to indicate that the task is complete
@@ -145,7 +143,7 @@ When handling emails, follow these steps:
 </Calendar Preferences>
 `;
 
-// Agentic workflow with HITL prompt 
+// Agentic workflow with HITL prompt
 export const agentSystemPromptHitl = `
 <Role>
 You are a top-notch executive assistant who cares about helping your executive perform as well as possible.
@@ -164,7 +162,7 @@ When handling emails, follow these steps:
 4. For responding to the email, draft a response email with the write_email tool
 5. For meeting requests, use the check_calendar_availability tool to find open time slots
 6. To schedule a meeting, use the schedule_meeting tool with a datetime object for the preferred_day parameter
-   - Today's date is ${new Date().toISOString().split('T')[0]} - use this for scheduling meetings accurately
+   - Today's date is ${new Date().toISOString().split("T")[0]} - use this for scheduling meetings accurately
 7. If you scheduled a meeting, then draft a short response email using the write_email tool
 8. After using the write_email tool, the task is complete
 9. If you have sent the email, then use the Done tool to indicate that the task is complete
@@ -183,7 +181,7 @@ When handling emails, follow these steps:
 </Calendar Preferences>
 `;
 
-// Agentic workflow with HITL and memory prompt 
+// Agentic workflow with HITL and memory prompt
 export const agentSystemPromptHitlMemory = `
 <Role>
 You are a top-notch executive assistant. 
@@ -204,7 +202,7 @@ When handling emails, follow these steps:
 6. If the provided background information, meeting preferences, or response preferences are not sufficient, use the Question tool to ask follow-up questions
 7. For meeting requests, use the check_calendar_availability tool to find open time slots
 8. Schedule meetings with the schedule_meeting tool when appropriate
-   - Today's date is ${new Date().toISOString().split('T')[0]} - use this for scheduling meetings accurately
+   - Today's date is ${new Date().toISOString().split("T")[0]} - use this for scheduling meetings accurately
 9. If you scheduled a meeting, then draft a short response email using the write_email tool
 10. Draft response emails using the write_email tool
 11. After calling the write_email tool, the task is complete
@@ -224,12 +222,12 @@ When handling emails, follow these steps:
 </Background>
 `;
 
-// Default background information 
+// Default background information
 export const defaultBackground = `
 I'm Lance, a software engineer at LangChain.
 `;
 
-// Default response preferences 
+// Default response preferences
 export const defaultResponsePreferences = `
 Use professional and concise language. If the e-mail mentions a deadline, make sure to explicitly acknowledge and reference the deadline in your response.
 
@@ -255,12 +253,12 @@ When responding to meeting scheduling requests:
 - Reference the meeting's purpose in your response.
 `;
 
-// Default calendar preferences 
+// Default calendar preferences
 export const defaultCalPreferences = `
 30 minute meetings are preferred, but 15 minute meetings are also acceptable.
 `;
 
-// Default triage instructions 
+// Default triage instructions
 export const defaultTriageInstructions = `
 Emails that are not worth responding to:
 - Marketing newsletters and promotional emails
@@ -287,5 +285,3 @@ Emails that are worth responding to:
 - Personal reminders related to family (wife / daughter)
 - Personal reminder related to self-care (doctor appointments, etc)
 `;
-
-
