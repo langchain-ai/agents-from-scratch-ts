@@ -64,7 +64,7 @@ import { parseEmail, formatEmailMarkdown } from "../utils.js";
 
 // Message Types from LangGraph SDK
 import { AIMessage, Message } from "@langchain/langgraph-sdk";
-
+import { HumanMessage } from "@langchain/core/messages";
 // Helper for type checking
 const hasToolCalls = (
   message: Message,
@@ -76,8 +76,6 @@ const hasToolCalls = (
   );
 };
 
-// Define proper TypeScript types for our state
-type AgentStateType = BaseEmailAgentStateType;
 // Define node names as a union type for better type safety
 type AgentNodes =
   | typeof START
@@ -105,7 +103,7 @@ export const initializeEmailAssistant = async () => {
   const llmWithTools = llm.bindTools(tools, { toolChoice: "required" });
 
   // Create the LLM call node
-  const llmCallNode = async (state: AgentStateType) => {
+  const llmCallNode = async (state: BaseEmailAgentStateType) => {
     /**
      * LLM decides whether to call a tool or not
      * This is the main decision-making node that generates responses or tool calls
@@ -133,15 +131,15 @@ export const initializeEmailAssistant = async () => {
   const toolNode = new ToolNode(tools);
 
   // Conditional edge function for routing
-  const shouldContinue = (state: AgentStateType) => {
+  const shouldContinue = (state: BaseEmailAgentStateType) => {
     /**
      * Route to environment for tool execution, or end if Done tool called
      * Similar to the Python version's should_continue function
      */
-    const messages = state.messages;
+    const messages = state.messages ;
     if (!messages || messages.length === 0) return END;
 
-    const lastMessage = messages[messages.length - 1];
+    const lastMessage = messages[messages.length - 1] as unknown as Message;
 
     if (hasToolCalls(lastMessage) && lastMessage.tool_calls.length > 0) {
       // Check if any tool call is the "Done" tool
@@ -155,7 +153,7 @@ export const initializeEmailAssistant = async () => {
   };
 
   // Create the triage router node
-  const triageRouterNode = async (state: AgentStateType) => {
+  const triageRouterNode = async (state: BaseEmailAgentStateType) => {
     /**
      * Analyze email content to decide if we should respond, notify, or ignore.
      *
@@ -227,7 +225,7 @@ export const initializeEmailAssistant = async () => {
       }
 
       let goto = END;
-      let update: Partial<AgentStateType> = {
+      let update: Partial<BaseEmailAgentStateType> = {
         classification_decision: classification,
       };
 
@@ -238,7 +236,7 @@ export const initializeEmailAssistant = async () => {
         goto = "response_agent";
 
         update.messages = [
-          { type: "human", content: `Respond to the email: ${emailMarkdown}` },
+          new HumanMessage({ content: `Respond to the email: ${emailMarkdown}` }),
         ];
       } else if (classification === "ignore") {
         console.log(
@@ -277,8 +275,8 @@ export const initializeEmailAssistant = async () => {
   // Build agent subgraph
   const agentBuilder = new StateGraph<
     typeof BaseEmailAgentState,
-    AgentStateType,
-    Partial<AgentStateType>,
+    BaseEmailAgentStateType,
+    Partial<BaseEmailAgentStateType>,
     AgentNodes
   >(BaseEmailAgentState)
     .addNode("llm_call", llmCallNode)
@@ -296,8 +294,8 @@ export const initializeEmailAssistant = async () => {
   // Build overall workflow
   const emailAssistantGraph = new StateGraph<
     typeof BaseEmailAgentState,
-    AgentStateType,
-    Partial<AgentStateType>,
+    BaseEmailAgentStateType,
+    Partial<BaseEmailAgentStateType>,
     AgentNodes
   >(BaseEmailAgentState)
     .addNode("triage_router", triageRouterNode, {
