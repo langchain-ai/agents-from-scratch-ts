@@ -18,7 +18,7 @@
     "@jest/globals": "^29.7.0",
     "@langchain/community": "^0.0.34",
     "@langchain/core": "^0.3.49",
-    "@langchain/langgraph": "^0.2.67",
+    "@langchain/langgraph": "^0.2.70",
     "@langchain/openai": "^0.0.14",
     "dotenv": "^16.5.0",
     "langchain": "^0.3.24",

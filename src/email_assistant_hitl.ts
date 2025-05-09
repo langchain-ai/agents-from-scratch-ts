@@ -588,9 +588,6 @@ export const initializeHitlEmailAssistant = async () => {
     });
   };
 
-  // Create a checkpointer for workflow state
-  const checkpointer = new MemorySaver();
-
   // Build agent subgraph
   const agentBuilder = new StateGraph(EmailAgentHITLState)
     .addNode("llm_call", llmCallNode)
@@ -603,9 +600,7 @@ export const initializeHitlEmailAssistant = async () => {
     .addEdge("interrupt_handler", "llm_call");
 
   // Compile the agent with the checkpointer
-  const responseAgent = agentBuilder.compile({
-    checkpointer,
-  });
+  const responseAgent = agentBuilder.compile();
 
   // Build overall workflow
   const emailAssistantGraph = new StateGraph(EmailAgentHITLState)
@@ -659,12 +654,10 @@ export const initializeHitlEmailAssistant = async () => {
     // Add the missing edge from response_agent to END, similar to the memory version
     .addEdge("response_agent", END);
 
-  console.log("Compiling HITL email assistant with checkpointer");
+  console.log("Compiling HITL email assistant");
 
-  // Compile and return the email assistant with the checkpointer
-  return emailAssistantGraph.compile({
-    checkpointer,
-  });
+  // Compile and return the email assistant
+  return emailAssistantGraph.compile();
 };
 
 // Initialize and export HITL email assistant directly with a default checkpointer
