@@ -561,8 +561,11 @@ export const triageInterruptHandlerNode = async (
     goto: END,
     update: {
       messages: [
-        ...returnMessages, 
-        {role: "system", content: `Unhandled review action: ${reviewAction}. Ending triage.`}
+        ...returnMessages,
+        {
+          role: "system",
+          content: `Unhandled review action: ${reviewAction}. Ending triage.`,
+        },
       ],
     },
   });
@@ -745,7 +748,7 @@ export const interruptHandlerNode = async (
     // Format tool call for display and prepend the original email
     const toolDisplay = formatForDisplay(toolCall);
     const description = originalEmailMarkdown + toolDisplay;
-    
+
     // DO NOT wrap interrupt() in a try...catch block here
     const isEditOrAccept =
       toolCall.name === "write_email" || toolCall.name === "schedule_meeting";
@@ -993,7 +996,9 @@ export const interruptHandlerNode = async (
       processedOneToolCall = true;
     } else {
       // This case should ideally not be reached if interrupt config is exhaustive
-      console.warn(`Unhandled review action for tool ${toolCall.name}: ${reviewAction}`);
+      console.warn(
+        `Unhandled review action for tool ${toolCall.name}: ${reviewAction}`,
+      );
       result.push({
         role: "tool",
         content: `Unhandled review action: ${reviewAction}`,
@@ -1005,10 +1010,10 @@ export const interruptHandlerNode = async (
     // If a direct return wasn't made (e.g. in ignore case leading to END)
     // ensure we break if one tool call was processed by HITL interrupt.
     if (processedOneToolCall) {
-        break; // We break here because we only want to process one HITL tool interrupt at a time
+      break; // We break here because we only want to process one HITL tool interrupt at a time
     }
   }
-   // If we iterate through all tool_calls and none were HITL / processedOneToolCall is still false,
+  // If we iterate through all tool_calls and none were HITL / processedOneToolCall is still false,
   // but results were populated by non-HITL tools, this is fine.
   // If results is empty and processedOneToolCall is false, it implies an empty tool_calls array or non-matching tools.
 

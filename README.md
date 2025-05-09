@@ -302,7 +302,8 @@ If the interrupt allows editing (e.g., `allow_edit: true`), you provide the new 
   }
 ]
 ```
-*Note: The structure of `args` must match what the interrupted tool or action expects.* 
+
+_Note: The structure of `args` must match what the interrupted tool or action expects._
 
 **3. Providing Feedback/Response (e.g., giving instructions to the LLM)**
 

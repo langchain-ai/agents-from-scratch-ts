@@ -110,7 +110,7 @@ export const initializeHitlEmailAssistant = async () => {
   // Create the LLM call node
   const llmCallNode = async (
     state: EmailAgentHITLStateType,
-    config: LangGraphRunnableConfig
+    config: LangGraphRunnableConfig,
   ) => {
     const { messages } = state;
 
@@ -151,7 +151,7 @@ export const initializeHitlEmailAssistant = async () => {
   // Create the interrupt handler node for human review
   const interruptHandlerNode = async (
     state: EmailAgentHITLStateType,
-    config: LangGraphRunnableConfig
+    config: LangGraphRunnableConfig,
   ): Promise<Command> => {
     // Store messages to be returned
     const result: BaseMessageLike[] = [];
@@ -199,7 +199,10 @@ export const initializeHitlEmailAssistant = async () => {
           });
         } else {
           try {
-            const parsedArgs = typeof toolCall.args === "string" ? JSON.parse(toolCall.args) : toolCall.args;
+            const parsedArgs =
+              typeof toolCall.args === "string"
+                ? JSON.parse(toolCall.args)
+                : toolCall.args;
             const observation = await tool.invoke(parsedArgs);
             result.push({
               role: "tool",
@@ -227,10 +230,16 @@ export const initializeHitlEmailAssistant = async () => {
         throw new Error("Invalid email parsing result"); // Or handle more gracefully
       }
       const { author, to, subject, emailThread } = parseResult;
-      const originalEmailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);
+      const originalEmailMarkdown = formatEmailMarkdown(
+        subject,
+        author,
+        to,
+        emailThread,
+      );
       const toolDisplay = formatForDisplay(toolCall);
       const description = originalEmailMarkdown + toolDisplay;
-      const isEditOrAccept = toolCall.name === "write_email" || toolCall.name === "schedule_meeting";
+      const isEditOrAccept =
+        toolCall.name === "write_email" || toolCall.name === "schedule_meeting";
 
       // DO NOT wrap interrupt() in a try...catch block here
       const humanReview = interrupt<HumanInterrupt, HumanResponse[]>({
@@ -246,7 +255,7 @@ export const initializeHitlEmailAssistant = async () => {
           allow_accept: isEditOrAccept,
         },
       })[0];
-      
+
       const reviewAction = humanReview.type;
       const reviewData = humanReview.args;
 
@@ -272,23 +281,44 @@ export const initializeHitlEmailAssistant = async () => {
           });
         } else {
           // This should not happen if toolCall.name is one of the hitlTools
-          console.warn(`Unexpected tool ${toolCall.name} in HITL response block.`);
-          result.push({ role: "tool", content: `Unexpected tool: ${toolCall.name}`, tool_call_id: callId });
+          console.warn(
+            `Unexpected tool ${toolCall.name} in HITL response block.`,
+          );
+          result.push({
+            role: "tool",
+            content: `Unexpected tool: ${toolCall.name}`,
+            tool_call_id: callId,
+          });
         }
         processedToolCallIds.add(callId);
         processedOneToolCall = true; // Mark as processed
       } else if (reviewAction === "accept") {
         const tool = toolsByName[toolCall.name];
-        const parsedArgs = typeof toolCall.args === "string" ? JSON.parse(toolCall.args) : toolCall.args;
+        const parsedArgs =
+          typeof toolCall.args === "string"
+            ? JSON.parse(toolCall.args)
+            : toolCall.args;
         const observation = await tool.invoke(parsedArgs);
-        result.push({ role: "tool", content: observation, tool_call_id: callId });
+        result.push({
+          role: "tool",
+          content: observation,
+          tool_call_id: callId,
+        });
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
-      } else if (reviewAction === "edit" && typeof reviewData === "object" && reviewData !== null) {
+      } else if (
+        reviewAction === "edit" &&
+        typeof reviewData === "object" &&
+        reviewData !== null
+      ) {
         const tool = toolsByName[toolCall.name];
         // Assuming reviewData directly contains the new args for the tool
-        const observation = await tool.invoke(reviewData); 
-        result.push({ role: "tool", content: observation, tool_call_id: callId });
+        const observation = await tool.invoke(reviewData);
+        result.push({
+          role: "tool",
+          content: observation,
+          tool_call_id: callId,
+        });
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
       } else if (reviewAction === "ignore") {
@@ -302,8 +332,14 @@ export const initializeHitlEmailAssistant = async () => {
         processedOneToolCall = true;
         goto = END; // Or specific handling per tool type if needed
       } else {
-        console.warn(`Unhandled review action for tool ${toolCall.name}: ${reviewAction}`);
-        result.push({ role: "tool", content: `Unhandled review action: ${reviewAction}`, tool_call_id: callId });
+        console.warn(
+          `Unhandled review action for tool ${toolCall.name}: ${reviewAction}`,
+        );
+        result.push({
+          role: "tool",
+          content: `Unhandled review action: ${reviewAction}`,
+          tool_call_id: callId,
+        });
         processedToolCallIds.add(callId);
         processedOneToolCall = true; // Mark as processed to move to the next step
       }
@@ -321,7 +357,8 @@ export const initializeHitlEmailAssistant = async () => {
         if (!processedToolCallIds.has(tc_callId)) {
           result.push({
             role: "tool",
-            content: "Tool execution deferred or pending subsequent review step.",
+            content:
+              "Tool execution deferred or pending subsequent review step.",
             tool_call_id: tc_callId,
           });
         }
@@ -355,7 +392,7 @@ export const initializeHitlEmailAssistant = async () => {
   // Create the triage router node
   const triageRouterNode = async (
     state: EmailAgentHITLStateType,
-    config: LangGraphRunnableConfig
+    config: LangGraphRunnableConfig,
   ) => {
     try {
       const { email_input } = state;
@@ -407,29 +444,29 @@ export const initializeHitlEmailAssistant = async () => {
         classification = "ignore";
       } else {
         console.log(
-          `Unrecognized classification: "${responseText}". Defaulting to notify.`
+          `Unrecognized classification: "${responseText}". Defaulting to notify.`,
         );
         classification = "notify";
       }
 
       if (classification === "respond") {
         console.log(
-          "📧 Classification: RESPOND - This email requires a response"
+          "📧 Classification: RESPOND - This email requires a response",
         );
         return new Command({
           goto: "response_agent",
           update: {
             classification_decision: classification,
             messages: [
-              new HumanMessage({ 
-                content: `Respond to the email: ${emailMarkdown}` 
+              new HumanMessage({
+                content: `Respond to the email: ${emailMarkdown}`,
               }),
             ],
           },
         });
       } else if (classification === "notify") {
         console.log(
-          "🔔 Classification: NOTIFY - This email contains important information"
+          "🔔 Classification: NOTIFY - This email contains important information",
         );
         return new Command({
           goto: "triage_interrupt_handler",
@@ -439,7 +476,7 @@ export const initializeHitlEmailAssistant = async () => {
         });
       } else if (classification === "ignore") {
         console.log(
-          "🚫 Classification: IGNORE - This email can be safely ignored"
+          "🚫 Classification: IGNORE - This email can be safely ignored",
         );
         return new Command({
           goto: END,
@@ -477,14 +514,14 @@ export const initializeHitlEmailAssistant = async () => {
   // Create the triage interrupt handler node
   const triageInterruptHandlerNode = async (
     state: EmailAgentHITLStateType,
-    config: LangGraphRunnableConfig
+    config: LangGraphRunnableConfig,
   ) => {
     // Parse the email input
     const parseResult = parseEmail(state.email_input);
 
     // Validate parsing result
     if (!parseResult || typeof parseResult !== "object") {
-        throw new Error("Invalid email parsing result");
+      throw new Error("Invalid email parsing result");
     }
 
     const { author, to, subject, emailThread } = parseResult;
@@ -514,7 +551,7 @@ export const initializeHitlEmailAssistant = async () => {
         allow_accept: false,
       },
     })[0];
-      
+
     const returnMessages: Messages = [...initialMessages];
     const reviewAction = humanReview.type;
     const reviewData = humanReview.args;
@@ -536,10 +573,15 @@ export const initializeHitlEmailAssistant = async () => {
         update: { messages: returnMessages },
       });
     }
-    
+
     // Fallback for unhandled actions
-    console.warn(`Unknown or unhandled review action in triage: ${reviewAction}`);
-    returnMessages.push({role: "system", content: `Unhandled review action: ${reviewAction}. Ending triage.`});
+    console.warn(
+      `Unknown or unhandled review action in triage: ${reviewAction}`,
+    );
+    returnMessages.push({
+      role: "system",
+      content: `Unhandled review action: ${reviewAction}. Ending triage.`,
+    });
     return new Command({
       goto: END,
       update: { messages: returnMessages },
@@ -617,9 +659,7 @@ export const initializeHitlEmailAssistant = async () => {
     // Add the missing edge from response_agent to END, similar to the memory version
     .addEdge("response_agent", END);
 
-  console.log(
-    "Compiling HITL email assistant with checkpointer"
-  );
+  console.log("Compiling HITL email assistant with checkpointer");
 
   // Compile and return the email assistant with the checkpointer
   return emailAssistantGraph.compile({
@@ -629,5 +669,3 @@ export const initializeHitlEmailAssistant = async () => {
 
 // Initialize and export HITL email assistant directly with a default checkpointer
 export const hitlEmailAssistant = initializeHitlEmailAssistant();
-
-
