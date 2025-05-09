@@ -1,7 +1,38 @@
+# Email Assistant Agents with LangGraph.js
+
+This repository contains implementations of AI email assistants built using LangGraph.js, a library for building stateful, multi-actor applications with LLMs. It demonstrates how to create, test, and add features like Human-in-the-Loop (HITL) and persistent memory to an AI agent.
+
+Three versions of the email assistant are available in the `src/` directory:
+1.  `email_assistant.ts`: A basic email assistant for triage and response.
+2.  `email_assistant_hitl.ts`: Extends the basic assistant with Human-in-the-Loop capabilities for reviewing and intervening in the agent's actions.
+3.  `email_assistant_hitl_memory.ts`: Further extends the HITL assistant with persistent memory to learn from user feedback and preferences.
+
+## Table of Contents
+
+- [Getting Started](#getting-started)
+- [Project Structure](#project-structure)
+- [Core Concepts & Workflow](#core-concepts--workflow)
+  - [Overview](#overview)
+  - [Key LangGraph/LangChain Components](#key-langgraphlangchain-components)
+  - [General Workflow](#general-workflow)
+  - [Human-in-the-Loop (HITL)](#human-in-the-loop-hitl)
+  - [Memory Implementation](#memory-implementation)
+- [Testing in LangGraph Studio](#testing-in-langgraph-studio)
+  - [Example Email Input](#example-email-input)
+  - [Understanding Node Outputs](#understanding-node-outputs)
+  - [HITL Interactions & Resuming from Interrupts](#hitl-interactions--resuming-from-interrupts)
+  - [Comprehensive Testing Scenarios](#comprehensive-testing-scenarios)
+  - [Testing Memory Features](#testing-memory-features)
+- [Development & Debugging](#development--debugging)
+
 ## Getting Started
 
-1. Install dependencies:
+### Prerequisites
+- Node.js (v18 or higher recommended)
+- A package manager (npm, yarn, or pnpm)
 
+### 1. Install Dependencies
+Clone the repository and install the necessary packages:
 ```bash
 npm install
 # or
@@ -10,14 +41,14 @@ yarn install
 pnpm install
 ```
 
-2.  create a `.env` file in the root of the project with your OpenAI API key:
-
+### 2. Environment Setup
+Create a `.env` file in the root of the project and add your OpenAI API key:
 ```
 OPENAI_API_KEY=your_api_key_here
 ```
 
-3. Start Langgraph Studio
-
+### 3. Run the Agent
+Start the email assistant. This will typically also make it available for interaction and visualization in LangGraph Studio (usually at `http://localhost:PORT/studio` - check your terminal output for the exact port).
 ```bash
 npm run agent
 # or
@@ -26,66 +57,91 @@ yarn agent
 pnpm agent
 ```
 
-## Table of Contents
+## Project Structure
 
-- [TypeScript Email Assistant Implementation](#typescript-email-assistant-implementation)
-- [Project Structure](#project-structure)
-- [LangGraph Studio Testing](#langgraph-studio-testing)
-  - [Node Details and Expected Outputs](#node-details-and-expected-outputs)
-  - [Testing Different Scenarios](#testing-different-scenarios)
-- [Course Outline](#course-outline)
-- [To-Do List](#to-do-list-tues-apr-29---fri-may-2nd)
+- `src/`: Contains the core TypeScript source code for the email assistants.
+  - `email_assistant.ts`: Basic email assistant.
+  - `email_assistant_hitl.ts`: Email assistant with Human-in-the-Loop.
+  - `email_assistant_hitl_memory.ts`: Email assistant with HITL and memory.
+  - `tools/`: Directory for tool implementations (e.g., `base.ts`, specific tools).
+  - `prompts.ts`: Contains prompt templates used by the assistants.
+  - `schemas.ts`: Defines Zod schemas for state management (e.g., `BaseEmailAgentState`, `EmailAgentHITLState`) and tool inputs.
+  - `utils.ts`: Utility functions for tasks like email parsing and formatting.
+  - `config.ts` or `configuration.ts` (if present): For application-level configurations.
+- `README.md`: This file.
+- `package.json`: Project metadata and scripts.
+- `tsconfig.json`: TypeScript configuration.
+- `.env`: Environment variables (gitignored).
 
-### Project Structure
+## Core Concepts & Workflow
 
-- `scripts/`: TypeScript scripts to run the email assistant
-- `lib/`: Utility functions, tools, and shared types
-  - `lib/tools/`: Tool implementations
-  - `lib/prompts.ts`: Prompt templates
-  - `lib/schemas.ts`: TypeScript/Zod schemas
-  - `lib/utils.ts`: Utility functions
+### Overview
+The email assistants are built as stateful graphs using LangGraph.js.
+- **State Management**: The state of the workflow (e.g., messages, email content, classification decisions) is managed using Zod schemas defined in `src/schemas.ts` (like `BaseEmailAgentState` or `EmailAgentHITLStateType`). This provides type safety and clear structure.
+- **Graph Execution**: The `StateGraph` class is used to define nodes (representing actors or functions) and edges (representing transitions based on conditions or direct flow).
+- **Modularity**: Each version of the assistant (basic, HITL, memory) builds upon the previous, showcasing progressive feature integration.
 
-### Architecture
+### Key LangGraph/LangChain Components
+- `initChatModel` (from `langchain/chat_models/universal`): Initializes the Large Language Model (e.g., GPT-4, GPT-4o).
+- `StructuredTool` (from `@langchain/core/tools`): Base class for defining tools the agent can use.
+- Message Types (from `@langchain/core/messages`): `BaseMessage`, `AIMessage`, `HumanMessage`, `SystemMessage`, `ToolMessage` are used for chat history and agent communication. `ToolCall` represents an LLM's request to use a tool.
+- `StateGraph` (from `@langchain/langgraph`): The core class for building the graph.
+- `START`, `END` (from `@langchain/langgraph`): Special nodes representing the beginning and end of a graph or subgraph.
+- `Command` (from `@langchain/langgraph`): Used by nodes to direct the graph to the next node and update the state.
+- `interrupt` (from `@langchain/langgraph`): Pauses graph execution for Human-in-the-Loop interactions.
+- `MemorySaver`, `InMemoryStore` (from `@langchain/langgraph`): Used for persisting graph state and custom memory profiles.
 
-- Uses `StateGraph` from LangGraph to create a multi-step workflow
-- Leverages `Annotation` to track state across the graph nodes
-- Two main components: triage router + email response agent
+### General Workflow
+1.  **Email Input & Parsing**:
+    *   The assistant receives an email (structured as defined in `src/schemas.ts`).
+    *   `parseEmail` (from `src/utils.ts`) extracts key information (author, recipients, subject, body/thread).
+    *   `formatEmailMarkdown` (from `src/utils.ts`) prepares the email content for the LLM.
 
-### Key LangChain/LangGraph Components:
+2.  **Triage (`triage_router` node)**:
+    *   An LLM call classifies the email into one of three categories:
+        *   `respond`: Requires a direct response.
+        *   `notify`: Contains important information but may not need a direct response (can be reviewed by a human in HITL versions).
+        *   `ignore`: Can be safely filtered out.
+    *   The graph transitions based on this classification.
 
-- `initChatModel`: Creates LLM instance
-- `StructuredTool`: Base class for tool definitions
-- `BaseMessage`, `AIMessage`, `HumanMessage`, `SystemMessage`: Message handling
-- `ToolMessage`, `ToolCall`: Tool interaction types
-- `messagesStateReducer`: Manages message state history
-- `StateGraph`: Main orchestration framework
-- `Command`: Directs state transitions in the graph
+3.  **Response Generation (`response_agent` subgraph)**:
+    *   If an email is classified as `respond` (or a `notify` email is escalated), this subgraph is invoked.
+    *   **LLM Calls (`llm_call` node)**: The LLM, equipped with tools, decides the next action (e.g., draft a reply, use a tool to find information, or finish).
+    *   **Tool Usage**:
+        *   In `email_assistant.ts`, a `ToolNode` (named `environment`) executes tool calls.
+        *   In HITL versions, tool execution is often integrated within the `interruptHandlerNode` after potential human review.
+    *   **Conditional Logic (`shouldContinue` function)**: Determines if the agent needs to continue (e.g., make more tool calls) or if it has completed its task.
 
-### Workflow Sequence:
+### Human-in-the-Loop (HITL)
+Implemented in `email_assistant_hitl.ts` and `email_assistant_hitl_memory.ts`.
+- **Interrupts**: The graph execution pauses at critical junctures:
+    *   After triage if an email is marked `notify` (`triage_interrupt_handler` node).
+    *   Before executing certain tool calls within the `response_agent` (`interrupt_handler` node).
+- **Human Review**: Users can:
+    *   **Review** proposed actions (e.g., email drafts, tool parameters).
+    *   **Edit** data (e.g., modify an email draft before sending).
+    *   **Accept** the agent's proposed action.
+    *   **Ignore/Reject** the action.
+    *   Provide **feedback** to guide the agent's next step.
 
-1. `triageRouter`: Classifies email as respond/ignore/notify
-2. If respond → `response_agent` (compiled agent workflow)
-3. Agent workflow:
-   - `llmCall`: Makes decisions using LLM + bound tools
-   - `toolNode`: Executes tool calls with error handling
-   - `shouldContinue`: Determines if more tool calls needed
+### Memory Implementation
+Implemented in `email_assistant_hitl_memory.ts`.
+- **Persistent Learning**: The assistant learns from user interactions and feedback to improve its performance over time.
+- **Memory Storage**: Uses `InMemoryStore` (can be swapped for other persistent stores).
+- **Key Functions**:
+    *   `getMemory`: Retrieves preferences (e.g., for triage, response style) from the store or initializes with defaults.
+    *   `updateMemory`: Intelligently updates memory profiles based on user feedback or edits during HITL interactions.
+- **Namespaces**: Memory is organized into distinct namespaces for different types of preferences:
+    *   `["email_assistant", "triage_preferences"]`: Rules for email classification.
+    *   `["email_assistant", "response_preferences"]`: Preferences for email writing style.
+    *   `["email_assistant", "cal_preferences"]`: Preferences related to calendar scheduling.
 
-### Email Processing:
+## Testing in LangGraph Studio
 
-- Parses emails with `parseEmail` → author, to, subject, thread
-- Formats email content with `formatEmailMarkdown`
-- Routes to appropriate handling based on classification
+LangGraph Studio provides a visual interface to run, debug, and interact with your email assistant graph.
 
-### State Management:
-
-- `AgentState` tracks messages, email input, and classification
-- Properly typed with TypeScript for complete type safety
-- Uses command pattern to transition between states
-
-## LangGraph Studio Testing
-
-To test the email assistant in LangGraph Studio, use this example email input:
-
+### Example Email Input
+Use this JSON structure as input when testing your agent in the studio:
 ```json
 {
   "email_input": {
@@ -100,60 +156,28 @@ To test the email assistant in LangGraph Studio, use this example email input:
 }
 ```
 
-### Node Details and Expected Outputs
+### Understanding Node Outputs
 
-#### Triage Router Node
-
-This node analyzes the email content and classifies it into one of three categories:
-
-1. **respond** - Emails that require a direct response, such as:
-
-   - Specific questions from clients or teammates
-   - Meeting requests and scheduling communications
-   - Task assignments directed to you
-   - Direct inquiries about projects, timelines, or deliverables
-
-2. **notify** - Important information that doesn't need a direct response:
-
-   - FYI emails and project updates
-   - Announcements that are relevant to your work
-   - Information that should be noted but doesn't require action
-   - Status updates from team members
-
-3. **ignore** - Emails that can be safely filtered out:
-   - Marketing and promotional emails
-   - Irrelevant company-wide announcements
-   - Emails clearly meant for other teams or departments
-   - Automated system notifications
-
-Output example after classification:
-
+#### Triage Router Node (`triage_router`)
+Classifies emails. Expect output like:
 ```json
 {
-  "classification_decision": "respond",
-  "messages": [
+  "classification_decision": "respond", // or "notify", "ignore"
+  "messages": [ // Updated messages array in the state
     {
-      "content": "Respond to the email: ...",
+      "content": "Respond to the email: ...", // Example human message added
       "type": "human"
     }
   ]
 }
 ```
 
-#### Response Agent Node
-
-This node handles the actual email response generation. It can:
-
-1. Use tools to craft appropriate responses
-2. Look up information if needed
-3. Check calendars for meeting availability
-4. End the process when a satisfactory response is formulated
-
-Tool call output example:
-
+#### Response Agent Nodes (e.g., `llm_call`, `interrupt_handler`)
+Handles response generation.
+- `llm_call` output might include tool calls:
 ```json
 {
-  "messages": [
+  "messages": [ // Could be a single AIMessage with tool_calls
     {
       "content": null,
       "tool_calls": [
@@ -171,113 +195,12 @@ Tool call output example:
   ]
 }
 ```
+- `interrupt_handler` output will include tool responses after execution or human feedback.
 
-#### Human-in-the-Loop Interactions
+### HITL Interactions & Resuming from Interrupts
+When an interrupt pauses the graph for human input, you resume by providing an array containing a single `HumanResponse` object. The structure depends on the action:
 
-For the HITL version, interrupts occur at decision points, allowing you to:
-
-1. **Review** actions before they're executed
-2. **Modify** content (like email drafts) before sending
-3. **Provide feedback** to guide the assistant
-4. **Approve or reject** proposed actions
-
-The interrupt dialog will show the proposed action and expected outcome, allowing you to make informed decisions during the workflow execution.
-
-### Testing All Graph Nodes
-
-To thoroughly test the entire graph and all possible paths, use the following examples:
-
-#### 1. Email Requiring Response (Triage → Response Agent)
-
-```json
-{
-  "email_input": {
-    "id": "email_123456789",
-    "thread_id": "thread_abc123",
-    "from_email": "client@example.com",
-    "to_email": "support@yourcompany.com",
-    "subject": "Question about API documentation",
-    "page_content": "Hello Support Team,\n\nI'm working on integrating with your API and I can't find the documentation for the '/users' endpoint. Could you please point me to where I can find this information or provide details about the request and response formats?\n\nThank you,\nSarah Johnson\nDeveloper\nClient Tech Inc.",
-    "send_time": "2025-05-01T14:22:00Z"
-  }
-}
-```
-
-#### 2. Notification Email (Triage → Triage Interrupt Handler)
-
-```json
-{
-  "email_input": {
-    "id": "email_789012345",
-    "thread_id": "thread_def456",
-    "from_email": "system@example.com",
-    "to_email": "team@yourcompany.com",
-    "subject": "System Maintenance - Important Notice",
-    "page_content": "Dear Team,\n\nThis is to inform you that we will be conducting scheduled system maintenance this Saturday from 10:00 PM to 2:00 AM EST. During this time, the production server will be temporarily unavailable.\n\nPlease plan your work accordingly and ensure any critical tasks are completed before this maintenance window.\n\nRegards,\nIT Operations",
-    "send_time": "2025-05-02T09:15:00Z"
-  }
-}
-```
-
-#### 3. Email to Ignore (Triage → END)
-
-```json
-{
-  "email_input": {
-    "id": "email_345678901",
-    "thread_id": "thread_ghi789",
-    "from_email": "marketing@newsletter.com",
-    "to_email": "all-staff@yourcompany.com",
-    "subject": "50% Off Spring Sale - Limited Time Offer!",
-    "page_content": "AMAZING DEALS JUST FOR YOU!\n\nDon't miss our Spring Sale with 50% off all products!\n\nUse promo code SPRING50 at checkout.\nOffer valid until May 15th.\n\nShop Now! Click here to browse our collection.\n\nTo unsubscribe from our mailing list, click here.",
-    "send_time": "2025-05-03T11:30:00Z"
-  }
-}
-```
-
-#### 4. Testing Triage Interrupt → Response Agent Path
-
-When the triage node classifies an email as "notify", you'll be prompted with an interrupt. To test this path:
-
-1. Use the "Notification Email" example above
-2. When the interrupt appears, choose the "continue" or "feedback" action
-3. Optionally provide feedback like: "Please respond to this with our availability during the maintenance window"
-4. This will direct the flow to the response_agent node
-
-#### 5. Testing Triage Interrupt → END Path
-
-When the triage node classifies an email as "notify", you can also choose to ignore it:
-
-1. Use the "Notification Email" example above
-2. When the interrupt appears, choose the "ignore" action
-3. This will end the workflow
-
-#### 6. Testing Response Agent Tool Calls
-
-When the response agent makes a tool call, you'll be prompted with an interrupt. To test different paths:
-
-**Accept the tool call:**
-Choose "accept" to execute the tool with the original arguments
-
-**Edit the tool call:**
-Choose "edit" to modify the tool arguments before execution. For example, if the agent drafts an email, you might modify the wording or add additional information.
-
-**Ignore the tool call:**
-Choose "ignore" to reject the tool call, which will send the workflow to END
-
-**Provide feedback:**
-Choose "feedback" to send instructions back to the agent. For example: "The tone is too formal, please make it more conversational"
-
-### Resuming from Interrupts: Input Examples
-
-When an interrupt pauses the graph execution for human input, you'll resume the graph by providing an array containing a single `HumanResponse` object. The structure of this object depends on the action you choose (accept, edit, ignore, or respond).
-
-Here are examples for common scenarios:
-
-**1. Accepting an Action (e.g., a tool call)**
-
-If the interrupt allows accepting (e.g., `allow_accept: true`), and you choose to accept the proposed action without changes:
-
+**1. Accepting an Action** (e.g., `allow_accept: true`)
 ```json
 [
   {
@@ -286,29 +209,21 @@ If the interrupt allows accepting (e.g., `allow_accept: true`), and you choose t
 ]
 ```
 
-**2. Editing Arguments (e.g., modifying a draft email)**
-
-If the interrupt allows editing (e.g., `allow_edit: true`), you provide the new arguments for the action. For example, if editing a `write_email` tool call:
-
+**2. Editing Arguments** (e.g., modifying a draft email for `write_email` tool)
 ```json
 [
   {
     "type": "edit",
-    "args": {
+    "args": { // Structure of 'args' must match the tool's expected input
       "recipient": "client@example.com",
       "subject": "Re: Your Updated Question",
-      "content": "Hello Sarah,\n\nThanks for the clarification! I have now updated the information regarding the '/users' endpoint. Please find the revised details attached.\n\nBest regards,\nLance\nSupport Team"
+      "body": "Hello Sarah,\n\nThanks for the clarification! I have now updated the information regarding the '/users' endpoint. Please find the revised details attached.\n\nBest regards,\nLance\nSupport Team"
     }
   }
 ]
 ```
 
-_Note: The structure of `args` must match what the interrupted tool or action expects._
-
-**3. Providing Feedback/Response (e.g., giving instructions to the LLM)**
-
-If the interrupt allows responding (e.g., `allow_respond: true`), you provide a string as the `args`:
-
+**3. Providing Feedback/Response** (e.g., giving instructions to the LLM)
 ```json
 [
   {
@@ -318,10 +233,7 @@ If the interrupt allows responding (e.g., `allow_respond: true`), you provide a 
 ]
 ```
 
-**4. Ignoring an Action**
-
-If the interrupt allows ignoring (e.g., `allow_ignore: true`), and you choose to ignore the proposed action:
-
+**4. Ignoring an Action** (e.g., `allow_ignore: true`)
 ```json
 [
   {
@@ -330,50 +242,67 @@ If the interrupt allows ignoring (e.g., `allow_ignore: true`), and you choose to
 ]
 ```
 
-These examples cover the primary ways you'll interact with interrupts in LangGraph Studio. The specific `args` needed for the "edit" type will depend on the tool or action that was interrupted.
+### Comprehensive Testing Scenarios
+To thoroughly test all graph paths:
 
-### Testing Memory Features
+#### 1. Email Requiring Response (Triage → Response Agent)
+**Input:**
+```json
+{
+  "email_input": {
+    "id": "email_123",
+    "from_email": "client@example.com",
+    "subject": "Question about API documentation",
+    "page_content": "Hello Support Team,\nI'm working on integrating with your API and I can't find the documentation for the '/users' endpoint. Could you please point me to where I can find this information or provide details about the request and response formats?\nThank you,\nSarah Johnson"
+  }
+}
+```
+**Expected:** `triage_router` classifies as `respond`, then `response_agent` generates a reply (possibly using tools).
 
-After running a few interactions with different types of emails, the memory features should begin to adapt. Try the following:
+#### 2. Notification Email (Triage → `triage_interrupt_handler` [for HITL versions])
+**Input:**
+```json
+{
+  "email_input": {
+    "id": "email_456",
+    "from_email": "system@example.com",
+    "subject": "System Maintenance - Important Notice",
+    "page_content": "Dear Team,\nThis is to inform you that we will be conducting scheduled system maintenance this Saturday from 10:00 PM to 2:00 AM EST. During this time, the production server will be temporarily unavailable.\nRegards,\nIT Operations"
+  }
+}
+```
+**Expected (HITL):** `triage_router` classifies as `notify`. `triage_interrupt_handler` pauses for human review.
+  - **User chooses "respond" (with feedback):** Flow proceeds to `response_agent`.
+  - **User chooses "ignore":** Flow proceeds to `END`.
 
-1. Run a sequence of emails with similar themes
-2. Edit several email responses in a consistent way (e.g., always making them more concise)
-3. Then send a new email of the same type and observe if the agent adapts its behavior
+#### 3. Email to Ignore (Triage → END)
+**Input:**
+```json
+{
+  "email_input": {
+    "id": "email_789",
+    "from_email": "marketing@newsletter.com",
+    "subject": "50% Off Spring Sale - Limited Time Offer!",
+    "page_content": "AMAZING DEALS JUST FOR YOU! Don't miss our Spring Sale..."
+  }
+}
+```
+**Expected:** `triage_router` classifies as `ignore`. Flow proceeds to `END`.
 
-For example, if you consistently ignore system maintenance emails, eventually the triage preferences should update to classify similar emails as "ignore" instead of "notify".
+#### 4. Testing Response Agent Tool Call Interrupts (HITL versions)
+When the `response_agent` (via `interrupt_handler`) proposes a tool call (e.g., `write_email`, `schedule_meeting`):
+- **Accept:** Tool executes with original arguments.
+- **Edit:** Modify arguments (e.g., email body) before execution.
+- **Ignore:** Tool call is rejected, potentially ending the workflow or prompting LLM for alternative.
+- **Feedback:** Send instructions back to the LLM (e.g., "Make the tone more conversational").
 
-### Testing Different Scenarios
+### Testing Memory Features (`email_assistant_hitl_memory.ts`)
+1.  Run sequences of emails with similar themes.
+2.  During HITL, consistently edit responses or provide feedback (e.g., always making emails more concise, or always changing meeting suggestions to afternoons).
+3.  After several interactions, send a new email of the same type. Observe if the agent's initial suggestions (triage classification, draft content, meeting times) adapt based on the learned preferences stored in memory.
+    *   Example: If you consistently ignore system maintenance emails after they are classified as `notify`, the `triage_preferences` might update to classify them as `ignore` directly.
 
-Try modifying the email content to test different classification outcomes:
-
-1. **For "respond" classification**: Include direct questions, meeting requests, or explicit asks
-2. **For "notify" classification**: Send FYI updates without questions or required actions
-3. **For "ignore" classification**: Use marketing language, irrelevant information, or messages clearly meant for others
-
-### Memory Implementation
-
-#### Memory Management:
-
-`getMemory:` Retrieves memory from the store or initializes with defaults
-`updateMemory:` Intelligently updates memory based on user feedback
-
-#### Memory is organized in namespaces for different aspects:
-
-- ["email_assistant", "triage_preferences"]: Email classification preferences
-- ["email_assistant", "response_preferences"]: Email response style preferences
-- ["email_assistant", "cal_preferences"]: Calendar meeting preferences
-
-## TS Video outline
-
-> BUILD
-
-> EVAL
-
-> HITL
-
-> MEMORY
-
-## To Do List Tues Apr 29 - Fri May 2nd
+## Development & Debugging
 
 - [x] prompts
 - [x] schemas

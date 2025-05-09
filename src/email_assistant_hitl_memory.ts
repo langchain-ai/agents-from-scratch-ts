@@ -11,7 +11,7 @@
  * │                       Email Assistant with Memory                        │
  * ├─────────────────────────────────────────────────────────────────────────┤
  * │ COMPONENTS                                                               │
- * │ - LLM (with tools)        : GPT-4 model for decision making              │
+ * │ - LLM (with tools)        : GPT-4o model for decision making             │
  * │ - Memory System           : InMemoryStore for maintaining preferences    │
  * │                                                                          │
  * │ GRAPH NODES                                                              │
@@ -30,10 +30,12 @@
  * │ - setupLLMAndTools()      : Initializes LLM and tools                    │
  * │ - getMemory()             : Retrieves preferences from memory store      │
  * │ - updateMemory()          : Updates preferences based on user feedback   │
- * │ - createTriageRouterNode(): Creates email classification node            │
- * │ - createInterruptHandlerNode(): Creates human review handling node       │
- * │ - createLLMCallNode()     : Creates node for LLM response generation     │
+ * │ - triageRouterNode()      : Creates email classification node            │
+ * │ - triageInterruptHandlerNode(): Gets human input on notification emails  │
+ * │ - interruptHandlerNode()  : Handles human review of agent actions        │
+ * │ - llmCallNode()           : Creates node for LLM response generation     │
  * │ - initializeEmailAssistant(): Creates the agent graph with all nodes     │
+ * │ - shouldContinue()        : Routes graph based on agent output           │
  * └─────────────────────────────────────────────────────────────────────────┘
  */
 
