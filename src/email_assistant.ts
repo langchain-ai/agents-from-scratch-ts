@@ -179,39 +179,48 @@ export const initializeEmailAssistant = async () => {
         emailThread,
       );
 
-      // Add JSON format instruction to the system prompt
-      const jsonSystemPrompt = `${systemPrompt}\n\nProvide your response in the following JSON format:
-{
-  "reasoning": "your step-by-step reasoning",
-  "classification": "ignore" | "respond" | "notify"
-}`;
+      // Add a clear instruction for a simple string response rather than JSON
+      const simplifiedSystemPrompt = `${systemPrompt}
 
-      const classificationSchema = z.object({
-        reasoning: z.string().describe("your step-by-step reasoning"),
-        classification: z
-          .enum(["ignore", "respond", "notify"])
-          .describe("The classification of the email"),
-      });
+After analyzing this email, determine if it should be:
+1. "ignore" - Not important, no action needed
+2. "respond" - Requires a response
+3. "notify" - Contains important information but no response needed
 
-      const llmWithClassification = llm.withStructuredOutput(
-        classificationSchema,
-        {
-          name: "classification",
-        },
-      );
+Reply with ONLY ONE WORD: "ignore", "respond", or "notify".`;
 
-      // Use the regular LLM instead of withStructuredOutput
-      const response = await llmWithClassification.invoke([
-        { role: "system", content: jsonSystemPrompt },
+      // Use the regular LLM with a simplified prompt
+      const response = await llm.invoke([
+        { role: "system", content: simplifiedSystemPrompt },
         { role: "human", content: userPrompt },
       ]);
 
+      // Extract the classification from the simple response
+      let classification: "ignore" | "respond" | "notify" | undefined;
+      const responseText = (response.content || "")
+        .toString()
+        .toLowerCase()
+        .trim();
+
+      if (responseText.includes("respond")) {
+        classification = "respond";
+      } else if (responseText.includes("notify")) {
+        classification = "notify";
+      } else if (responseText.includes("ignore")) {
+        classification = "ignore";
+      } else {
+        console.log(
+          `Unrecognized classification: "${responseText}". Defaulting to notify.`,
+        );
+        classification = "notify";
+      }
+
       let goto = END;
       let update: Partial<BaseEmailAgentStateType> = {
-        classification_decision: response.classification,
+        classification_decision: classification,
       };
 
-      if (response.classification === "respond") {
+      if (classification === "respond") {
         console.log(
           "📧 Classification: RESPOND - This email requires a response",
         );
@@ -222,16 +231,16 @@ export const initializeEmailAssistant = async () => {
             content: `Respond to the email: ${emailMarkdown}`,
           }),
         ];
-      } else if (response.classification === "ignore") {
+      } else if (classification === "ignore") {
         console.log(
           "🚫 Classification: IGNORE - This email can be safely ignored",
         );
-      } else if (response.classification === "notify") {
+      } else if (classification === "notify") {
         console.log(
           "🔔 Classification: NOTIFY - This email contains important information",
         );
       } else {
-        throw new Error(`Invalid classification: ${response.classification}`);
+        throw new Error(`Invalid classification: ${classification}`);
       }
 
       return new Command({

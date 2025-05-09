@@ -268,6 +268,69 @@ Choose "ignore" to reject the tool call, which will send the workflow to END
 **Provide feedback:**
 Choose "feedback" to send instructions back to the agent. For example: "The tone is too formal, please make it more conversational"
 
+### Resuming from Interrupts: Input Examples
+
+When an interrupt pauses the graph execution for human input, you'll resume the graph by providing an array containing a single `HumanResponse` object. The structure of this object depends on the action you choose (accept, edit, ignore, or respond).
+
+Here are examples for common scenarios:
+
+**1. Accepting an Action (e.g., a tool call)**
+
+If the interrupt allows accepting (e.g., `allow_accept: true`), and you choose to accept the proposed action without changes:
+
+```json
+[
+  {
+    "type": "accept"
+  }
+]
+```
+
+**2. Editing Arguments (e.g., modifying a draft email)**
+
+If the interrupt allows editing (e.g., `allow_edit: true`), you provide the new arguments for the action. For example, if editing a `write_email` tool call:
+
+```json
+[
+  {
+    "type": "edit",
+    "args": {
+      "recipient": "client@example.com",
+      "subject": "Re: Your Updated Question",
+      "content": "Hello Sarah,\n\nThanks for the clarification! I have now updated the information regarding the '/users' endpoint. Please find the revised details attached.\n\nBest regards,\nLance\nSupport Team"
+    }
+  }
+]
+```
+*Note: The structure of `args` must match what the interrupted tool or action expects.* 
+
+**3. Providing Feedback/Response (e.g., giving instructions to the LLM)**
+
+If the interrupt allows responding (e.g., `allow_respond: true`), you provide a string as the `args`:
+
+```json
+[
+  {
+    "type": "response",
+    "args": "The draft is good, but please make the tone slightly more formal and add a closing sentence about looking forward to their reply."
+  }
+]
+```
+
+**4. Ignoring an Action**
+
+If the interrupt allows ignoring (e.g., `allow_ignore: true`), and you choose to ignore the proposed action:
+
+```json
+[
+  {
+    "type": "ignore"
+  }
+]
+```
+
+These examples cover the primary ways you'll interact with interrupts in LangGraph Studio. The specific `args` needed for the "edit" type will depend on the tool or action that was interrupted.
+
 ### Testing Memory Features
 
 After running a few interactions with different types of emails, the memory features should begin to adapt. Try the following:

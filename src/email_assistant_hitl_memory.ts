@@ -468,106 +468,104 @@ export const triageInterruptHandlerNode = async (
   // Create email markdown for Agent Inbox in case of notification
   const emailMarkdown = formatEmailMarkdown(subject, author, to, emailThread);
 
-  try {
-    // Create messages
-    const messages = [
+  // Create messages
+  const messages = [
+    {
+      role: "human",
+      content: `Email to notify user about: ${emailMarkdown}`,
+    },
+  ];
+
+  // DO NOT wrap interrupt() in a try...catch block here
+  const humanReview = interrupt<HumanInterrupt, HumanResponse[]>({
+    action_request: {
+      action: `Email requires attention: ${state.classification_decision || "notify"}`,
+      args: {},
+    },
+    description: emailMarkdown,
+    config: {
+      allow_ignore: true,
+      allow_respond: true,
+      allow_edit: false,
+      allow_accept: false,
+    },
+  })[0];
+
+  // Initialize return values
+  const returnMessages: Messages = [...messages];
+
+  // Handle different response types
+  const reviewAction = humanReview.type;
+  const reviewData = humanReview.args;
+
+  if (reviewAction === "response" && reviewData) {
+    returnMessages.push({
+      role: "human",
+      content: `User wants to reply to the email. Use this feedback to respond: ${reviewData}`,
+    });
+    // Update memory with feedback
+    const memoryUpdateMessages = [
       {
         role: "human",
-        content: `Email to notify user about: ${emailMarkdown}`,
+        content:
+          "The user decided to respond to the email, so update the triage preferences to capture this.",
       },
+      ...returnMessages,
     ];
 
-    const humanReview = interrupt<HumanInterrupt, HumanResponse[]>({
-      action_request: {
-        action: `Email requires attention: ${state.classification_decision || "notify"}`,
-        args: {},
-      },
-      description: emailMarkdown,
-      config: {
-        allow_ignore: true,
-        allow_respond: true,
-        allow_edit: false,
-        allow_accept: false,
-      },
-    })[0];
+    await updateMemory(
+      store,
+      ["email_assistant", "triage_preferences"],
+      addMessages([], memoryUpdateMessages),
+    );
 
-    // Initialize return values
-    const returnMessages: Messages = [...messages];
-
-    // Handle different response types
-    const reviewAction = humanReview.type;
-    const reviewData = humanReview.args;
-
-    if (reviewAction === "response" && reviewData) {
-      returnMessages.push({
-        role: "human",
-        content: `User wants to reply to the email. Use this feedback to respond: ${reviewData}`,
-      });
-      // Update memory with feedback
-      const memoryUpdateMessages = [
-        {
-          role: "human",
-          content:
-            "The user decided to respond to the email, so update the triage preferences to capture this.",
-        },
-        ...returnMessages,
-      ];
-
-      await updateMemory(
-        store,
-        ["email_assistant", "triage_preferences"],
-        addMessages([], memoryUpdateMessages),
-      );
-
-      return new Command({
-        goto: "response_agent",
-        update: {
-          messages: returnMessages,
-        },
-      });
-    }
-
-    if (reviewAction === "ignore") {
-      // User ignored the email or other action
-      const memoryUpdateMessages = [
-        {
-          role: "human",
-          content:
-            "The user decided to ignore the email even though it was classified as notify. Update triage preferences to capture this.",
-        },
-        ...returnMessages,
-      ];
-
-      // Update memory with feedback
-      await updateMemory(
-        store,
-        ["email_assistant", "triage_preferences"],
-        addMessages([], memoryUpdateMessages),
-      );
-
-      return new Command({
-        goto: END,
-        update: {
-          messages: returnMessages,
-        },
-      });
-    }
-
-    throw new Error(`Unknown review action: ${reviewAction}`);
-  } catch (error: any) {
-    console.error("Error with triage interrupt handler:", error);
     return new Command({
-      goto: END,
+      goto: "response_agent",
       update: {
-        messages: [
-          {
-            role: "system",
-            content: `Error in triage interrupt: ${error.message}`,
-          },
-        ],
+        messages: returnMessages,
       },
     });
   }
+
+  if (reviewAction === "ignore") {
+    // User ignored the email or other action
+    const memoryUpdateMessages = [
+      {
+        role: "human",
+        content:
+          "The user decided to ignore the email even though it was classified as notify. Update triage preferences to capture this.",
+      },
+      ...returnMessages,
+    ];
+
+    // Update memory with feedback
+    await updateMemory(
+      store,
+      ["email_assistant", "triage_preferences"],
+      addMessages([], memoryUpdateMessages),
+    );
+
+    return new Command({
+      goto: END,
+      update: {
+        messages: returnMessages,
+      },
+    });
+  }
+
+  // If we reach here, it means reviewAction was not 'response' or 'ignore'
+  // This could be an unhandled action type from the interrupt or an issue.
+  // For robustness, we can log this and default to ending the process.
+  console.warn(`Unknown or unhandled review action in triage: ${reviewAction}`);
+  return new Command({
+    goto: END,
+    update: {
+      messages: [
+        ...returnMessages, 
+        {role: "system", content: `Unhandled review action: ${reviewAction}. Ending triage.`}
+      ],
+    },
+  });
 };
 
 /**
@@ -696,6 +694,7 @@ export const interruptHandlerNode = async (
         });
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
+        continue; // Important: continue to next tool_call or to the end of loop
       }
 
       try {
@@ -714,6 +713,7 @@ export const interruptHandlerNode = async (
         });
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
+        continue; // Important: continue to next tool_call or to the end of loop
       } catch (error: any) {
         console.error(`Error executing tool ${toolCall.name}:`, error);
         result.push({
@@ -723,6 +723,7 @@ export const interruptHandlerNode = async (
         });
         processedToolCallIds.add(callId);
         processedOneToolCall = true;
+        continue; // Important: continue to next tool_call or to the end of loop
       }
     }
 
@@ -744,284 +745,303 @@ export const interruptHandlerNode = async (
     // Format tool call for display and prepend the original email
     const toolDisplay = formatForDisplay(toolCall);
     const description = originalEmailMarkdown + toolDisplay;
+    
+    // DO NOT wrap interrupt() in a try...catch block here
+    const isEditOrAccept =
+      toolCall.name === "write_email" || toolCall.name === "schedule_meeting";
+    const humanReview = interrupt<HumanInterrupt, HumanResponse[]>({
+      action_request: {
+        action: `Review this ${toolCall.name} action:`,
+        args: toolCall.args,
+      },
+      description,
+      config: {
+        allow_ignore: true,
+        allow_respond: true,
+        allow_edit: isEditOrAccept,
+        allow_accept: isEditOrAccept,
+      },
+    })[0];
 
-    try {
-      const isEditOrAccept =
-        toolCall.name === "write_email" || toolCall.name === "schedule_meeting";
-      const humanReview = interrupt<HumanInterrupt, HumanResponse[]>({
-        action_request: {
-          action: `Review this ${toolCall.name} action:`,
-          args: toolCall.args,
-        },
-        description,
-        config: {
-          allow_ignore: true,
-          allow_respond: true,
-          allow_edit: isEditOrAccept,
-          allow_accept: isEditOrAccept,
-        },
-      })[0];
+    const reviewAction = humanReview.type;
+    const reviewData = humanReview.args;
 
-      const reviewAction = humanReview.type;
-      const reviewData = humanReview.args;
-
-      if (reviewAction === "response" && typeof reviewData === "string") {
-        if (toolCall.name === "write_email") {
-          // Don't execute the tool, and add a message with the user feedback to incorporate into the email
-          result.push({
-            role: "tool",
-            content: `User gave feedback, which can we incorporate into the email. Feedback: ${reviewData}`,
-            tool_call_id: toolCall.id,
-          });
-          await updateMemory(
-            store,
-            ["email_assistant", "response_preferences"],
-            addMessages(
-              [],
-              [
-                ...state.messages,
-                ...result,
-                {
-                  role: "human",
-                  content: `User gave feedback, which we can use to update the calendar preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
-                },
-              ],
-            ),
-          );
-        } else if (toolCall.name === "schedule_meeting") {
-          // Don't execute the tool, and add a message with the user feedback to incorporate into the email
-          result.push({
-            role: "tool",
-            content: `User gave feedback, which can we incorporate into the meeting request. Feedback: ${reviewData}`,
-            tool_call_id: toolCall.id,
-          });
-          await updateMemory(
-            store,
-            ["email_assistant", "response_preferences"],
-            addMessages(
-              [],
-              [
-                ...state.messages,
-                ...result,
-                {
-                  role: "human",
-                  content: `User gave feedback, which we can use to update the calendar preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
-                },
-              ],
-            ),
-          );
-        } else if (toolCall.name === "question") {
-          // Don't execute the tool, and add a message with the user feedback to incorporate into the email
-          result.push({
-            role: "tool",
-            content: `User answered the question, which can we can use for any follow up actions. Feedback: ${reviewData}`,
-            tool_call_id: toolCall.id,
-          });
-        } else {
-          throw new Error(`Invalid tool call: ${toolCall.name}`);
-        }
-      }
-      if (reviewAction === "accept") {
-        // Execute the tool with original args
-        const tool = toolsByName[toolCall.name];
-        // Parse the args properly
-        const parsedArgs =
-          typeof toolCall.args === "string"
-            ? JSON.parse(toolCall.args)
-            : toolCall.args;
-
-        const observation = await tool.invoke(parsedArgs);
+    if (reviewAction === "response" && typeof reviewData === "string") {
+      if (toolCall.name === "write_email") {
+        // Don't execute the tool, and add a message with the user feedback to incorporate into the email
         result.push({
           role: "tool",
-          content: observation,
-          tool_call_id: callId,
+          content: `User gave feedback, which can we incorporate into the email. Feedback: ${reviewData}`,
+          tool_call_id: toolCall.id,
         });
-        processedToolCallIds.add(callId);
-        processedOneToolCall = true;
-      }
-      if (
-        reviewAction === "edit" &&
-        typeof reviewData === "object" &&
-        reviewData !== null
-      ) {
-        // Tool selection
-        const tool = toolsByName[toolCall.name];
-
-        // Save the initial tool call for memory updates
-        const initialToolCall = `${toolCall.name}: ${JSON.stringify(toolCall.args, null, 2)}`;
-
-        // Update the AI message's tool call with edited content (reference to the message in the state)
-        if (hasToolCalls(lastMessage)) {
-          // Replace the original tool call with the edited one
-          lastMessage.tool_calls = lastMessage.tool_calls?.map((tc) => {
-            if (tc.id === callId) {
-              return {
-                ...tc,
-                args: reviewData.args,
-              };
-            }
-            return tc;
-          });
-        }
-
-        // Execute the tool with edited args
-        const observation = await tool.invoke(reviewData.args);
-
-        // Add the tool response
+        await updateMemory(
+          store,
+          ["email_assistant", "response_preferences"],
+          addMessages(
+            [],
+            [
+              ...state.messages,
+              ...result,
+              {
+                role: "human",
+                content: `User gave feedback, which we can use to update the calendar preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
+              },
+            ],
+          ),
+        );
+      } else if (toolCall.name === "schedule_meeting") {
+        // Don't execute the tool, and add a message with the user feedback to incorporate into the email
         result.push({
           role: "tool",
-          content: observation,
-          tool_call_id: callId,
+          content: `User gave feedback, which can we incorporate into the meeting request. Feedback: ${reviewData}`,
+          tool_call_id: toolCall.id,
         });
-        processedToolCallIds.add(callId);
-        processedOneToolCall = true;
-
-        // Update memory with user edits
-        if (toolCall.name === "write_email") {
-          await updateMemory(
-            store,
-            ["email_assistant", "response_preferences"],
+        await updateMemory(
+          store,
+          ["email_assistant", "response_preferences"],
+          addMessages(
+            [],
             [
-              new HumanMessage(
-                `User edited the email response. Here is the initial email generated by the assistant: ${initialToolCall}. Here is the edited email: ${JSON.stringify(reviewData.args)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
-              ),
+              ...state.messages,
+              ...result,
+              {
+                role: "human",
+                content: `User gave feedback, which we can use to update the calendar preferences. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
+              },
             ],
-          );
-        } else if (toolCall.name === "schedule_meeting") {
-          await updateMemory(
-            store,
-            ["email_assistant", "cal_preferences"],
-            [
-              new HumanMessage(
-                `User edited the calendar invitation. Here is the initial calendar invitation generated by the assistant: ${initialToolCall}. Here is the edited calendar invitation: ${JSON.stringify(reviewData.args)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
-              ),
-            ],
-          );
-        }
+          ),
+        );
+      } else if (toolCall.name === "question") {
+        // Don't execute the tool, and add a message with the user feedback to incorporate into the email
+        result.push({
+          role: "tool",
+          content: `User answered the question, which can we can use for any follow up actions. Feedback: ${reviewData}`,
+          tool_call_id: toolCall.id,
+        });
+      } else {
+        throw new Error(`Invalid tool call: ${toolCall.name}`);
       }
-      if (reviewAction === "ignore") {
-        if (toolCall.name === "write_email") {
-          // Don't execute the tool, and tell the agent how to proceed
-          result.push({
-            role: "tool",
-            content:
-              "User ignored this email draft. Ignore this email and end the workflow.",
-            tool_call_id: callId,
-          });
-          processedToolCallIds.add(callId);
-          processedOneToolCall = true;
+    } else if (reviewAction === "accept") {
+      // Execute the tool with original args
+      const tool = toolsByName[toolCall.name];
+      // Parse the args properly
+      const parsedArgs =
+        typeof toolCall.args === "string"
+          ? JSON.parse(toolCall.args)
+          : toolCall.args;
 
-          // Update memory by reflecting on the email tool call
-          await updateMemory(
-            store,
-            ["email_assistant", "triage_preferences"],
-            addMessages(
-              [],
-              [
-                ...state.messages,
-                ...result,
-                {
-                  role: "human",
-                  content: `The user ignored the email draft. That means they did not want to respond to the email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
-                },
-              ],
-            ),
-          );
-
-          return new Command({
-            goto: END,
-            update: {
-              messages: result,
-            },
-          });
-        } else if (toolCall.name === "schedule_meeting") {
-          // Don't execute the tool, and tell the agent how to proceed
-          result.push({
-            role: "tool",
-            content:
-              "User ignored this calendar meeting draft. Ignore this email and end the workflow.",
-            tool_call_id: callId,
-          });
-          processedToolCallIds.add(callId);
-          processedOneToolCall = true;
-
-          // Update the memory by reflecting on the full message history including the schedule_meeting tool call
-          await updateMemory(
-            store,
-            ["email_assistant", "triage_preferences"],
-            addMessages(
-              [],
-              [
-                ...state.messages,
-                ...result,
-                {
-                  role: "human",
-                  content: `The user ignored the calendar meeting draft. That means they did not want to schedule a meeting for this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
-                },
-              ],
-            ),
-          );
-
-          return new Command({
-            goto: END,
-            update: {
-              messages: result,
-            },
-          });
-        } else if (toolCall.name === "question") {
-          // Don't execute the tool, and tell the agent how to proceed
-          result.push({
-            role: "tool",
-            content:
-              "User ignored this question. Ignore this email and end the workflow.",
-            tool_call_id: callId,
-          });
-          processedToolCallIds.add(callId);
-          processedOneToolCall = true;
-
-          // Update the memory by reflecting on the full message history including the Question tool call
-          await updateMemory(
-            store,
-            ["email_assistant", "triage_preferences"],
-            addMessages(
-              [],
-              [
-                ...state.messages,
-                ...result,
-                {
-                  role: "human",
-                  content: `The user ignored the Question. That means they did not want to answer the question or deal with this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
-                },
-              ],
-            ),
-          );
-
-          return new Command({
-            goto: END,
-            update: {
-              messages: result,
-            },
-          });
-        }
-      }
-    } catch (error: any) {
-      console.error(`Error processing tool ${toolCall.name}:`, error);
+      const observation = await tool.invoke(parsedArgs);
       result.push({
         role: "tool",
-        content: `Error processing tool: ${error.message}`,
+        content: observation,
         tool_call_id: callId,
       });
       processedToolCallIds.add(callId);
       processedOneToolCall = true;
+    } else if (
+      reviewAction === "edit" &&
+      typeof reviewData === "object" &&
+      reviewData !== null
+    ) {
+      // Tool selection
+      const tool = toolsByName[toolCall.name];
+
+      // Save the initial tool call for memory updates
+      const initialToolCall = `${toolCall.name}: ${JSON.stringify(toolCall.args, null, 2)}`;
+
+      // Update the AI message's tool call with edited content (reference to the message in the state)
+      if (hasToolCalls(lastMessage)) {
+        // Replace the original tool call with the edited one
+        lastMessage.tool_calls = lastMessage.tool_calls?.map((tc) => {
+          if (tc.id === callId) {
+            return {
+              ...tc,
+              args: reviewData.args,
+            };
+          }
+          return tc;
+        });
+      }
+
+      // Execute the tool with edited args
+      const observation = await tool.invoke(reviewData.args);
+
+      // Add the tool response
+      result.push({
+        role: "tool",
+        content: observation,
+        tool_call_id: callId,
+      });
+      processedToolCallIds.add(callId);
+      processedOneToolCall = true;
+
+      // Update memory with user edits
+      if (toolCall.name === "write_email") {
+        await updateMemory(
+          store,
+          ["email_assistant", "response_preferences"],
+          [
+            new HumanMessage(
+              `User edited the email response. Here is the initial email generated by the assistant: ${initialToolCall}. Here is the edited email: ${JSON.stringify(reviewData.args)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
+            ),
+          ],
+        );
+      } else if (toolCall.name === "schedule_meeting") {
+        await updateMemory(
+          store,
+          ["email_assistant", "cal_preferences"],
+          [
+            new HumanMessage(
+              `User edited the calendar invitation. Here is the initial calendar invitation generated by the assistant: ${initialToolCall}. Here is the edited calendar invitation: ${JSON.stringify(reviewData.args)}. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
+            ),
+          ],
+        );
+      }
+    } else if (reviewAction === "ignore") {
+      if (toolCall.name === "write_email") {
+        // Don't execute the tool, and tell the agent how to proceed
+        result.push({
+          role: "tool",
+          content:
+            "User ignored this email draft. Ignore this email and end the workflow.",
+          tool_call_id: callId,
+        });
+        processedToolCallIds.add(callId);
+        processedOneToolCall = true;
+
+        // Update memory by reflecting on the email tool call
+        await updateMemory(
+          store,
+          ["email_assistant", "triage_preferences"],
+          addMessages(
+            [],
+            [
+              ...state.messages,
+              ...result,
+              {
+                role: "human",
+                content: `The user ignored the email draft. That means they did not want to respond to the email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
+              },
+            ],
+          ),
+        );
+
+        return new Command({
+          goto: END,
+          update: {
+            messages: result,
+          },
+        });
+      } else if (toolCall.name === "schedule_meeting") {
+        // Don't execute the tool, and tell the agent how to proceed
+        result.push({
+          role: "tool",
+          content:
+            "User ignored this calendar meeting draft. Ignore this email and end the workflow.",
+          tool_call_id: callId,
+        });
+        processedToolCallIds.add(callId);
+        processedOneToolCall = true;
+
+        // Update the memory by reflecting on the full message history including the schedule_meeting tool call
+        await updateMemory(
+          store,
+          ["email_assistant", "triage_preferences"],
+          addMessages(
+            [],
+            [
+              ...state.messages,
+              ...result,
+              {
+                role: "human",
+                content: `The user ignored the calendar meeting draft. That means they did not want to schedule a meeting for this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
+              },
+            ],
+          ),
+        );
+
+        return new Command({
+          goto: END,
+          update: {
+            messages: result,
+          },
+        });
+      } else if (toolCall.name === "question") {
+        // Don't execute the tool, and tell the agent how to proceed
+        result.push({
+          role: "tool",
+          content:
+            "User ignored this question. Ignore this email and end the workflow.",
+          tool_call_id: callId,
+        });
+        processedToolCallIds.add(callId);
+        processedOneToolCall = true;
+
+        // Update the memory by reflecting on the full message history including the Question tool call
+        await updateMemory(
+          store,
+          ["email_assistant", "triage_preferences"],
+          addMessages(
+            [],
+            [
+              ...state.messages,
+              ...result,
+              {
+                role: "human",
+                content: `The user ignored the Question. That means they did not want to answer the question or deal with this email. Update the triage preferences to ensure emails of this type are not classified as respond. Follow all instructions above, and remember: ${MEMORY_UPDATE_INSTRUCTIONS_REINFORCEMENT}.`,
+              },
+            ],
+          ),
+        );
+
+        return new Command({
+          goto: END,
+          update: {
+            messages: result,
+          },
+        });
+      }
+    } else {
+      // This case should ideally not be reached if interrupt config is exhaustive
+      console.warn(`Unhandled review action for tool ${toolCall.name}: ${reviewAction}`);
+      result.push({
+        role: "tool",
+        content: `Unhandled review action: ${reviewAction}`,
+        tool_call_id: callId,
+      });
+      processedToolCallIds.add(callId);
+      processedOneToolCall = true; // Mark as processed to move to the next step
+    }
+    // If a direct return wasn't made (e.g. in ignore case leading to END)
+    // ensure we break if one tool call was processed by HITL interrupt.
+    if (processedOneToolCall) {
+        break; // We break here because we only want to process one HITL tool interrupt at a time
+    }
+  }
+   // If we iterate through all tool_calls and none were HITL / processedOneToolCall is still false,
+  // but results were populated by non-HITL tools, this is fine.
+  // If results is empty and processedOneToolCall is false, it implies an empty tool_calls array or non-matching tools.
+
+  // If we processed one HITL tool and broke, or if we processed only non-HITL tools,
+  // we still need to provide placeholder responses for any remaining tool calls
+  // that were not processed due to the one-HITL-at-a-time logic or if they occurred after the break.
+  if (lastMessage.tool_calls) {
+    for (const tc of lastMessage.tool_calls) {
+      const tc_callId = tc.id ?? `fallback-id-${Date.now()}`;
+      if (!processedToolCallIds.has(tc_callId)) {
+        result.push({
+          role: "tool",
+          content: "Tool execution deferred or pending subsequent review step.",
+          tool_call_id: tc_callId,
+        });
+      }
     }
   }
 
   // Return Command with goto and update
   return new Command({
     goto,
-    update: {
-      messages: result,
-    },
+    update: { messages: result },
   });
 };
 
