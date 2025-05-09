@@ -821,15 +821,14 @@ export const interruptHandlerNode = async (
       } else {
         throw new Error(`Invalid tool call: ${toolCall.name}`);
       }
+      processedToolCallIds.add(callId);
+      processedOneToolCall = true;
     } else if (reviewAction === "accept") {
-      // Execute the tool with original args
       const tool = toolsByName[toolCall.name];
-      // Parse the args properly
       const parsedArgs =
         typeof toolCall.args === "string"
           ? JSON.parse(toolCall.args)
           : toolCall.args;
-
       const observation = await tool.invoke(parsedArgs);
       result.push({
         role: "tool",
@@ -838,6 +837,10 @@ export const interruptHandlerNode = async (
       });
       processedToolCallIds.add(callId);
       processedOneToolCall = true;
+      // If a write_email action is accepted, the response agent's job is done.
+      if (toolCall.name === "write_email") {
+        goto = END;
+      }
     } else if (
       reviewAction === "edit" &&
       typeof reviewData === "object" &&
@@ -926,12 +929,7 @@ export const interruptHandlerNode = async (
           ),
         );
 
-        return new Command({
-          goto: END,
-          update: {
-            messages: result,
-          },
-        });
+        goto = END;
       } else if (toolCall.name === "schedule_meeting") {
         // Don't execute the tool, and tell the agent how to proceed
         result.push({
@@ -960,12 +958,7 @@ export const interruptHandlerNode = async (
           ),
         );
 
-        return new Command({
-          goto: END,
-          update: {
-            messages: result,
-          },
-        });
+        goto = END;
       } else if (toolCall.name === "question") {
         // Don't execute the tool, and tell the agent how to proceed
         result.push({
@@ -994,13 +987,10 @@ export const interruptHandlerNode = async (
           ),
         );
 
-        return new Command({
-          goto: END,
-          update: {
-            messages: result,
-          },
-        });
+        goto = END;
       }
+      processedToolCallIds.add(callId);
+      processedOneToolCall = true;
     } else {
       // This case should ideally not be reached if interrupt config is exhaustive
       console.warn(`Unhandled review action for tool ${toolCall.name}: ${reviewAction}`);
