@@ -1,5 +1,6 @@
 import { EmailData } from "./schemas.js";
-import type { Message } from "@langchain/langgraph-sdk";
+
+import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import type { ToolCall } from "@langchain/core/messages/tool";
 
 /**
@@ -220,7 +221,7 @@ export function extractToolCalls(messages: any[]): string[] {
  * Note: This TypeScript implementation differs from the Python version
  * since we don't use stdout redirection.
  */
-export function formatMessagesString(messages: Message[]): string {
+export function formatMessagesString(messages: BaseMessage[]): string {
   return messages
     .map((message) => {
       let prefix = "";
@@ -251,12 +252,11 @@ export function formatMessagesString(messages: Message[]): string {
           ? message.content
           : JSON.stringify(message.content);
 
-      // Only AIMessage can have tool_calls or toolCalls
-      if (message.type === "ai") {
-        const aiMsg = message as import("@langchain/langgraph-sdk").AIMessage;
-        const toolCalls = aiMsg.tool_calls || (aiMsg as any).toolCalls;
-        if (toolCalls && toolCalls.length > 0) {
-          const toolCallsStr = toolCalls
+      // Only AIMessage can have tool_calls
+      if (message._getType() === "ai") {
+        const aiMessage = message as AIMessage; // Cast to AIMessage from @langchain/core/messages
+        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+          const toolCallsStr = aiMessage.tool_calls
             .map(
               (tc: ToolCall) =>
                 `\n  Tool: ${tc.name}\n  Args: ${JSON.stringify(tc.args, null, 2)}`,
