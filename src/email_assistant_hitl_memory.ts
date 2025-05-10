@@ -48,7 +48,6 @@ import {
   START,
   END,
   Command,
-  MemorySaver,
   InMemoryStore,
   BaseStore,
   LangGraphRunnableConfig,
@@ -1049,7 +1048,6 @@ export const interruptHandlerNode = async (
 // Initialize and export the agent graph
 export const initializeEmailAssistant = async () => {
   const memoryStore = new InMemoryStore();
-  const checkpointer = new MemorySaver();
 
   // Build agent subgraph
   const agentBuilder = new StateGraph(EmailAgentHITLState)
@@ -1065,7 +1063,6 @@ export const initializeEmailAssistant = async () => {
   // Compile the agent with memory store
   const responseAgent = agentBuilder.compile({
     store: memoryStore,
-    checkpointer,
   });
 
   // Build overall workflow
@@ -1123,7 +1120,6 @@ export const initializeEmailAssistant = async () => {
   // Compile and return the email assistant
   return emailAssistantGraph.compile({
     store: memoryStore,
-    checkpointer,
   });
 };
 

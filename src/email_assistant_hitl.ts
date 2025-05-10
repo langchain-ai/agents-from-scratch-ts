@@ -12,7 +12,7 @@
  * ├─────────────────────────────────────────────────────────────────────────┤
  * │ COMPONENTS                                                               │
  * │ - LLM                   : GPT-4 model for decision making                │
- * │ - Checkpointer          : MemorySaver for saving workflow state          │
+ * │          │
  * │                                                                          │
  * │ GRAPH NODES                                                              │
  * │ - triage_router         : Classifies emails (ignore/respond/notify)      │
@@ -46,7 +46,6 @@ import {
   START,
   END,
   Command,
-  MemorySaver,
   interrupt,
   Messages,
   LangGraphRunnableConfig,
@@ -79,7 +78,6 @@ import {
   HumanMessage,
 } from "@langchain/core/messages";
 import { HumanInterrupt, HumanResponse } from "@langchain/langgraph/prebuilt";
-import { z } from "zod";
 
 // Helper for type checking
 const hasToolCalls = (
