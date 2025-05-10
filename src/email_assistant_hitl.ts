@@ -12,7 +12,7 @@
  * ├─────────────────────────────────────────────────────────────────────────┤
  * │ COMPONENTS                                                               │
  * │ - LLM                   : GPT-4 model for decision making                │
- * │          │
+ * │          
  * │                                                                          │
  * │ GRAPH NODES                                                              │
  * │ - triage_router         : Classifies emails (ignore/respond/notify)      │

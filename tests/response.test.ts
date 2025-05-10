@@ -42,8 +42,6 @@ import { extractToolCalls, formatMessagesString } from "../src/utils.js";
  * - Mock assistant factory with configurable behavior
  */
 
-// Python uses command-line arguments with pytest, we'll use an environment variable
-// or default to the HITL+Memory version
 setAgentModule(process.env.AGENT_MODULE || "email_assistant_hitl_memory");
 
 describe("Email response tests", () => {

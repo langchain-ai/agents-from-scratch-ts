@@ -123,7 +123,6 @@ export const initializeEmailAssistant = async () => {
   const shouldContinue = (state: BaseEmailAgentStateType) => {
     /**
      * Route to environment for tool execution, or end if Done tool called
-     * Similar to the Python version's should_continue function
      */
     const messages = state.messages;
     if (!messages || messages.length === 0) return END;

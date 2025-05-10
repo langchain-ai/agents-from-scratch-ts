@@ -218,8 +218,7 @@ export function extractToolCalls(messages: any[]): string[] {
 
 /**
  * Format messages into a single string for analysis.
- * Note: This TypeScript implementation differs from the Python version
- * since we don't use stdout redirection.
+
  */
 export function formatMessagesString(messages: BaseMessage[]): string {
   return messages
