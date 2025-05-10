@@ -302,15 +302,3 @@ When the `response_agent` (via `interrupt_handler`) proposes a tool call (e.g., 
 3.  After several interactions, send a new email of the same type. Observe if the agent's initial suggestions (triage classification, draft content, meeting times) adapt based on the learned preferences stored in memory.
     *   Example: If you consistently ignore system maintenance emails after they are classified as `notify`, the `triage_preferences` might update to classify them as `ignore` directly.
 
-## Development & Debugging
-
-- [x] prompts
-- [x] schemas
-- [x] mock tools
-- [x] utils
-- [x] email assistant
-- [x ] email_assistant_hitl
-- [ in progress] email_assistant_memory
-- [ ] improve implementations
-- [ ] improve structure to mirror Python more closely
-- [ ] graph diagrams `await graph.getGraph().drawMermaidPng()`
