@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DynamicStructuredTool } from "@langchain/core/tools";
+import { DynamicStructuredTool, tool } from "@langchain/core/tools";
 
 const scheduleMeetingSchema = z.object({
   title: z.string().describe("Meeting title"),
@@ -9,15 +9,14 @@ const scheduleMeetingSchema = z.object({
   description: z.string().optional().describe("Meeting description"),
 });
 
-export const scheduleMeeting = new DynamicStructuredTool({
+export const scheduleMeeting = tool(async (args: z.infer<typeof scheduleMeetingSchema>) => {
+  const { title, attendees, startTime, endTime, description } = args;
+  // Mock implementation
+  return `Meeting "${title}" scheduled from ${startTime} to ${endTime} with ${attendees.length} attendees`;
+}, {
   name: "schedule_meeting",
   description: "Schedule a meeting on the calendar",
   schema: scheduleMeetingSchema,
-  func: async (args: z.infer<typeof scheduleMeetingSchema>) => {
-    const { title, attendees, startTime, endTime, description } = args;
-    // Mock implementation
-    return `Meeting "${title}" scheduled from ${startTime} to ${endTime} with ${attendees.length} attendees`;
-  },
 });
 
 const availabilitySchema = z.object({
@@ -25,13 +24,13 @@ const availabilitySchema = z.object({
   endTime: z.string().describe("End time in ISO format"),
 });
 
-export const checkCalendarAvailability = new DynamicStructuredTool({
-  name: "check_calendar_availability",
-  description: "Check calendar availability for a specified time range",
-  schema: availabilitySchema,
-  func: async (args: z.infer<typeof availabilitySchema>) => {
-    const { startTime, endTime } = args;
-    // Mock implementation
-    return `Time slot from ${startTime} to ${endTime} is available`;
+export const checkCalendarAvailability = tool(async (args: z.infer<typeof availabilitySchema>) => {
+  const { startTime, endTime } = args;
+  // Mock implementation
+  return `Time slot from ${startTime} to ${endTime} is available`;
+}, {
+    name: "check_calendar_availability",
+    description: "Check calendar availability for a specified time range",
+    schema: availabilitySchema,
   },
-});
+);
