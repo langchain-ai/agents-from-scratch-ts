@@ -60,6 +60,7 @@ import { StructuredTool } from "@langchain/core/tools";
 
 // Zod imports
 import "@langchain/langgraph/zod";
+import { z } from "zod";
 
 // LOCAL IMPORTS
 import { getTools, getToolsByName } from "./tools/base.js";
@@ -249,16 +250,18 @@ async function updateMemory(
 
     // Initialize chat model
     const llm = await initChatModel("openai:gpt-4o");
-    const llmWithStructuredOutput = llm.withStructuredOutput<UserPreferences>({
-      schema: {
-        role: "object",
-        properties: {
-          preferences: { role: "string" },
-          justification: { role: "string" },
-        },
-        required: ["preferences"],
+    const llmWithStructuredOutput = llm.withStructuredOutput(
+      z.object({
+        preferences: z.string().describe("The updated memory profile"),
+        justification: z.string().optional().describe("The reasoning for the update"),
+      })
+        .describe(
+          "The updated memory profile and the reasoning for the update",
+        ),
+      {
+        name: "update_memory",
       },
-    });
+    );
 
     // Create system message with memory update instructions
     const systemMsg = {
