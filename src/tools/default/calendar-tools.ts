@@ -19,9 +19,10 @@ export const scheduleMeeting = tool(async (args: z.infer<typeof scheduleMeetingS
   schema: scheduleMeetingSchema,
 });
 
-const availabilitySchema = z.object({
+export const availabilitySchema = z.object({
   startTime: z.string().describe("Start time in ISO format"),
   endTime: z.string().describe("End time in ISO format"),
+
 });
 
 export const checkCalendarAvailability = tool(async (args: z.infer<typeof availabilitySchema>) => {
