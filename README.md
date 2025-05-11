@@ -7,6 +7,9 @@ Three versions of the email assistant are available in the `src/` directory:
 2.  `email_assistant_hitl.ts`: Extends the basic assistant with Human-in-the-Loop capabilities for reviewing and intervening in the agent's actions.
 3.  `email_assistant_hitl_memory.ts`: Further extends the HITL assistant with persistent memory to learn from user feedback and preferences.
 
+### Notebooks
+There are also multiple interactive Typescript Jupyter notebooks to go through the process of creating these agentic features. You can use ts-lab kernel instead of the default python kernel to execute the notebook code in `agent.ipynb`, `hitl.ipynb`, `memory.ipynb`, and `langgraph_101.ipynb`
+
 ## Table of Contents
 
 - [Getting Started](#getting-started)
@@ -89,7 +92,6 @@ The email assistants are built as stateful graphs using LangGraph.js.
 - `START`, `END` (from `@langchain/langgraph`): Special nodes representing the beginning and end of a graph or subgraph.
 - `Command` (from `@langchain/langgraph`): Used by nodes to direct the graph to the next node and update the state.
 - `interrupt` (from `@langchain/langgraph`): Pauses graph execution for Human-in-the-Loop interactions.
-- `MemorySaver`, `InMemoryStore` (from `@langchain/langgraph`): Used for persisting graph state and custom memory profiles.
 
 ### General Workflow
 1.  **Email Input & Parsing**:

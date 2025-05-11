@@ -123,6 +123,7 @@ export const initializeEmailAssistant = async () => {
   const shouldContinue = (state: BaseEmailAgentStateType) => {
     /**
      * Route to environment for tool execution, or end if Done tool called
+
      */
     const messages = state.messages;
     if (!messages || messages.length === 0) return END;
