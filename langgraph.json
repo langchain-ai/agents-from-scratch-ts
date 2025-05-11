@@ -3,9 +3,9 @@
   "dockerfile_lines": [],
   "dependencies": ["."],
   "graphs": {
-    "emailAssistant": "./scripts/email_assistant.ts:getEmailAssistant",
-    "hitlEmailAssistant": "./scripts/email_assistant_hitl.ts:getHitlEmailAssistant",
-    "hitlEmailAssistantMemory": "./scripts/email_assistant_hitl_memory.ts:getHitlEmailAssistantWithMemory"
+    "emailAssistant": "./src/email_assistant.ts:emailAssistant",
+    "hitlEmailAssistant": "./src/email_assistant_hitl.ts:hitlEmailAssistant",
+    "hitlEmailAssistantMemory": "./src/email_assistant_hitl_memory.ts:hitlEmailAssistantWithMemory"
   },
   "env": ".env"
-} 
+}
