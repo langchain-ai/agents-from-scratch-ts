@@ -1,8 +1,11 @@
 {
-    "compilerOptions": {
-      "baseUrl": ".",
-      "paths": {
-        "@src/*": ["../src/*"]
-      }
-    }
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@src/*": ["../src/*"]
+    },
+    "rootDir": "../",
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "node"
   }
+}
