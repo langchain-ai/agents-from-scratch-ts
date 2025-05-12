@@ -251,10 +251,14 @@ async function updateMemory(
     // Initialize chat model
     const llm = await initChatModel("openai:gpt-4o");
     const llmWithStructuredOutput = llm.withStructuredOutput(
-      z.object({
-        preferences: z.string().describe("The updated memory profile"),
-        justification: z.string().optional().describe("The reasoning for the update"),
-      })
+      z
+        .object({
+          preferences: z.string().describe("The updated memory profile"),
+          justification: z
+            .string()
+            .optional()
+            .describe("The reasoning for the update"),
+        })
         .describe(
           "The updated memory profile and the reasoning for the update",
         ),
