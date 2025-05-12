@@ -34,7 +34,6 @@ ${content}
   description:
     "Write an email draft based on provided information. Use this when the user wants to compose a new email message.",
   schema: emailSchema,
-
 });
 
 /**
