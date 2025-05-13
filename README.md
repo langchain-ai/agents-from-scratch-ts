@@ -2,7 +2,6 @@
 
 This repository contains implementations of AI email assistants built using LangGraph.js, a library for building stateful, multi-actor applications with LLMs. It demonstrates how to create, test, and add features like Human-in-the-Loop (HITL) and persistent memory to an AI agent.
 
-## Getting Started
 
 ### Prerequisites
 - Install the latest version of [JupyterLab or Jupyter Notebook](https://jupyter.org/install)
@@ -10,19 +9,25 @@ This repository contains implementations of AI email assistants built using Lang
 - Node.js (v18 or higher recommended)
 - A package manager (npm, yarn, or pnpm)
 
+> [!NOTE]
+> In order to run the typescript notebooks, you must install jupyter or jupyter notebook as well as TS-Lab Kernel to execute the notebook code
+
+
+### Typescript Notebooks
+ multiple interactive Typescript Jupyter notebooks to go through the process of creating these agentic features.
+- `notebooks/langgraph_101.ipynb`
+- `notebooks/agent.ipynb`
+- `notebooks/hitl.ipynb` 
+- `notebooks/memory.ipynb`  
+
+### Email Assistant Scripts 
 Three versions of the email assistant are available in the `src/` directory:
 1.  `email_assistant.ts`: A basic email assistant for triage and response.
 2.  `email_assistant_hitl.ts`: Extends the basic assistant with Human-in-the-Loop capabilities for reviewing and intervening in the agent's actions.
 3.  `email_assistant_hitl_memory.ts`: Further extends the HITL assistant with persistent memory to learn from user feedback and preferences.
 
-### Typescript Notebooks
-- `langgraph_101.ipynb`
-- `agent.ipynb`, 
-- `hitl.ipynb`, 
-- `memory.ipynb`,  
 
-
-There are also multiple interactive Typescript Jupyter notebooks to go through the process of creating these agentic features. The notebooks assemble the agents in `src/` step by step. You can use **ts-lab kernel instead of the default python kernel** to execute the notebook code cells
+There are also The notebooks assemble the agents in `src/` step by step. You can use **ts-lab kernel instead of the default python kernel** to execute the notebook code cells
 
 
 ## Table of Contents
