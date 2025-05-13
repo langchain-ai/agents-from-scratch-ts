@@ -2,6 +2,14 @@
 
 This repository contains implementations of AI email assistants built using LangGraph.js, a library for building stateful, multi-actor applications with LLMs. It demonstrates how to create, test, and add features like Human-in-the-Loop (HITL) and persistent memory to an AI agent.
 
+## Getting Started
+
+### Prerequisites
+- Install the latest version of [JupyterLab or Jupyter Notebook](https://jupyter.org/install)
+- Install [TS-Lab Typescript Kernel for Notebooks](https://github.com/yunabe/tslab#display-rich-objects)
+- Node.js (v18 or higher recommended)
+- A package manager (npm, yarn, or pnpm)
+
 Three versions of the email assistant are available in the `src/` directory:
 1.  `email_assistant.ts`: A basic email assistant for triage and response.
 2.  `email_assistant_hitl.ts`: Extends the basic assistant with Human-in-the-Loop capabilities for reviewing and intervening in the agent's actions.
@@ -35,13 +43,7 @@ There are also multiple interactive Typescript Jupyter notebooks to go through t
   - [Testing Memory Features](#testing-memory-features)
 - [Development & Debugging](#development--debugging)
 
-## Getting Started
 
-### Prerequisites
-- Install the latest version of [JupyterLab or Jupyter Notebook](https://jupyter.org/install)
-- Install [TS-Lab Typescript Kernel for Notebooks](https://github.com/yunabe/tslab#display-rich-objects)
-- Node.js (v18 or higher recommended)
-- A package manager (npm, yarn, or pnpm)
 
 ### 1. Install Dependencies
 
