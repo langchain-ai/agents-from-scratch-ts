@@ -48,6 +48,5 @@
     "tsx": "^4.7.0",
     "typescript": "^5",
     "uuid": "^9.0.1"
-  },
-  "packageManager": "pnpm@10.9.0"
+  }
 }
