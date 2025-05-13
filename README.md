@@ -38,7 +38,8 @@ There are also multiple interactive Typescript Jupyter notebooks to go through t
 ## Getting Started
 
 ### Prerequisites
-
+- Install the latest version of [JupyterLab or Jupyter Notebook](https://jupyter.org/install)
+- Install [TS-Lab Typescript Kernel for Notebooks](https://github.com/yunabe/tslab#display-rich-objects)
 - Node.js (v18 or higher recommended)
 - A package manager (npm, yarn, or pnpm)
 
