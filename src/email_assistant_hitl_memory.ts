@@ -7,9 +7,9 @@
  * @module email_assistant_hitl_memory
  *
  * @structure
- * ┌─────────────────────────────────────────────────────────────────────────┐
+ * ┌──────────────────────────────────────────────────────────────────────────┐
  * │                       Email Assistant with Memory                        │
- * ├─────────────────────────────────────────────────────────────────────────┤
+ * ├──────────────────────────────────────────────────────────────────────────┤
  * │ COMPONENTS                                                               │
  * │ - LLM (with tools)        : GPT-4o model for decision making             │
  * │ - Memory System           : InMemoryStore for maintaining preferences    │
@@ -36,7 +36,7 @@
  * │ - llmCallNode()           : Creates node for LLM response generation     │
  * │ - initializeEmailAssistant(): Creates the agent graph with all nodes     │
  * │ - shouldContinue()        : Routes graph based on agent output           │
- * └─────────────────────────────────────────────────────────────────────────┘
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 
 // LangChain imports for chat models
@@ -56,7 +56,6 @@ import {
   addMessages,
 } from "@langchain/langgraph";
 import { ToolCall } from "@langchain/core/messages/tool";
-import { StructuredTool } from "@langchain/core/tools";
 
 // Zod imports
 import "@langchain/langgraph/zod";
@@ -166,8 +165,8 @@ const shouldContinue = (state: EmailAgentHITLStateType) => {
  */
 export const setupLLMAndTools = async () => {
   // Get tools
-  const tools = await getTools();
-  const toolsByName = await getToolsByName();
+  const tools = getTools();
+  const toolsByName = getToolsByName();
 
   // Initialize the LLM for use with router / structured output
   const llm = await initChatModel("openai:gpt-4o");

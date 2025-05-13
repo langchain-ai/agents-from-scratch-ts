@@ -34,10 +34,10 @@ export interface GetToolsOptions {
  * @param options - Configuration options for tool selection
  * @returns Array of StructuredTool instances ready for use with agents
  */
-export async function getTools({
+export function getTools({
   toolNames,
   includeGmail = false,
-}: GetToolsOptions = {}): Promise<StructuredTool[]> {
+}: GetToolsOptions = {}): StructuredTool[] {
   // Base tools dictionary - all available tools should be registered here
   const allTools: Record<string, StructuredTool> = {
     write_email: writeEmail,
@@ -68,10 +68,10 @@ export async function getTools({
  * @param tools - Optional array of tools to convert to lookup map
  * @returns Record mapping tool names to their corresponding StructuredTool instances
  */
-export async function getToolsByName(
+export function getToolsByName(
   tools?: StructuredTool[],
-): Promise<Record<string, StructuredTool>> {
-  const toolsList = tools || (await getTools());
+): Record<string, StructuredTool> {
+  const toolsList = tools || getTools();
 
   return toolsList.reduce<Record<string, StructuredTool>>((acc, tool) => {
     acc[tool.name] = tool;

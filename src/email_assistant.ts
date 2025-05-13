@@ -7,9 +7,9 @@
  * @module email_assistant
  *
  * @structure
- * ┌─────────────────────────────────────────────────────────────────────────┐
+ * ┌──────────────────────────────────────────────────────────────────────────┐
  * │                           Email Assistant                                │
- * ├─────────────────────────────────────────────────────────────────────────┤
+ * ├──────────────────────────────────────────────────────────────────────────┤
  * │ COMPONENTS                                                               │
  * │ - LLM                   : GPT-4 model for decision making                │
  * │ - Tools                 : Collection of tools for agent actions          │
@@ -32,7 +32,7 @@
  * │ - llmCallNode()         : Generates responses using LLM                  │
  * │ - triageRouterNode()    : Classifies incoming emails                     │
  * │ - shouldContinue()      : Routes graph based on agent output             │
- * └─────────────────────────────────────────────────────────────────────────┘
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 
 // LangChain imports for chat models
@@ -48,7 +48,7 @@ import { ToolNode } from "@langchain/langgraph/prebuilt";
 import "@langchain/langgraph/zod";
 
 // LOCAL IMPORTS
-import { getTools, getToolsByName } from "./tools/base.js";
+import { getTools } from "./tools/base.js";
 import {
   triageSystemPrompt,
   triageUserPrompt,
@@ -63,7 +63,6 @@ import { BaseEmailAgentState, BaseEmailAgentStateType } from "./schemas.js";
 import { parseEmail, formatEmailMarkdown } from "./utils.js";
 
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
-import { z } from "zod";
 
 const hasToolCalls = (
   message: BaseMessage,
