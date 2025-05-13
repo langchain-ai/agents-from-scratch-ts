@@ -8,8 +8,14 @@ Three versions of the email assistant are available in the `src/` directory:
 3.  `email_assistant_hitl_memory.ts`: Further extends the HITL assistant with persistent memory to learn from user feedback and preferences.
 
 ### Typescript Notebooks
+- `langgraph_101.ipynb`
+- `agent.ipynb`, 
+- `hitl.ipynb`, 
+- `memory.ipynb`,  
 
-There are also multiple interactive Typescript Jupyter notebooks to go through the process of creating these agentic features. The notebooks assemble the agents in `src/` step by step. You can use **ts-lab kernel instead of the default python kernel** to execute the notebook code in `agent.ipynb`, `hitl.ipynb`, `memory.ipynb`, and `langgraph_101.ipynb`
+
+There are also multiple interactive Typescript Jupyter notebooks to go through the process of creating these agentic features. The notebooks assemble the agents in `src/` step by step. You can use **ts-lab kernel instead of the default python kernel** to execute the notebook code cells
+
 
 ## Table of Contents
 
