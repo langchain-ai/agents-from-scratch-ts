@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DynamicStructuredTool, tool } from "@langchain/core/tools";
+import { tool } from "@langchain/core/tools";
 
 const scheduleMeetingSchema = z.object({
   title: z.string().describe("Meeting title"),

@@ -7,12 +7,12 @@
  * @module email_assistant_hitl
  *
  * @structure
- * ┌─────────────────────────────────────────────────────────────────────────┐
+ * ┌──────────────────────────────────────────────────────────────────────────┐
  * │                         HITL Email Assistant                             │
- * ├─────────────────────────────────────────────────────────────────────────┤
+ * ├──────────────────────────────────────────────────────────────────────────┤
  * │ COMPONENTS                                                               │
  * │ - LLM                   : GPT-4 model for decision making                │
- * │
+ * │ - Tools                 : Collection of tools for agent actions          │
  * │                                                                          │
  * │ GRAPH NODES                                                              │
  * │ - triage_router         : Classifies emails (ignore/respond/notify)      │
@@ -34,7 +34,7 @@
  * │ - triageRouterNode()    : Classifies incoming emails                     │
  * │ - triageInterruptHandlerNode(): Processes notifications with human input │
  * │ - shouldContinue()      : Routes graph based on agent output             │
- * └─────────────────────────────────────────────────────────────────────────┘
+ * └──────────────────────────────────────────────────────────────────────────┘
  */
 
 // LangChain imports for chat models
@@ -96,8 +96,8 @@ const hasToolCalls = (
  */
 export const initializeHitlEmailAssistant = async () => {
   // Get tools
-  const tools = await getTools();
-  const toolsByName = await getToolsByName();
+  const tools = getTools();
+  const toolsByName = getToolsByName();
 
   // Initialize the LLM
   const llm = await initChatModel("openai:gpt-4");
