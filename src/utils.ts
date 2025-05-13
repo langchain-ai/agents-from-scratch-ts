@@ -1,6 +1,11 @@
 import { EmailData } from "./schemas.js";
 
-import { AIMessage, type BaseMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  isAIMessage,
+  coerceMessageLikeToMessage,
+  type BaseMessage,
+} from "@langchain/core/messages";
 import type { ToolCall } from "@langchain/core/messages/tool";
 
 /**
@@ -53,7 +58,7 @@ export function formatEmailMarkdown(
   subject: string,
   author: string,
   to: string,
-  emailThread: string,
+  emailThread: string
 ): string {
   return `## Email: ${subject}
 
@@ -201,13 +206,13 @@ export function extractToolCalls(messages: any[]): string[] {
       // Handle plain objects
       if (message.tool_calls && Array.isArray(message.tool_calls)) {
         toolCallNames.push(
-          ...message.tool_calls.map((call: any) => call.name.toLowerCase()),
+          ...message.tool_calls.map((call: any) => call.name.toLowerCase())
         );
       }
       // Handle class instances with toolCalls property
       else if ("toolCalls" in message && Array.isArray(message.toolCalls)) {
         toolCallNames.push(
-          ...message.toolCalls.map((call: any) => call.name.toLowerCase()),
+          ...message.toolCalls.map((call: any) => call.name.toLowerCase())
         );
       }
     }
@@ -222,8 +227,9 @@ export function extractToolCalls(messages: any[]): string[] {
  */
 export function formatMessagesString(messages: BaseMessage[]): string {
   return messages
-    .map((message) => {
+    .map((messageLike) => {
       let prefix = "";
+      const message = coerceMessageLikeToMessage(messageLike);
 
       // Determine prefix based on role
       if ("role" in message && message.role) {
@@ -252,13 +258,13 @@ export function formatMessagesString(messages: BaseMessage[]): string {
           : JSON.stringify(message.content);
 
       // Only AIMessage can have tool_calls
-      if (message._getType() === "ai") {
+      if (isAIMessage(message)) {
         const aiMessage = message as AIMessage; // Cast to AIMessage from @langchain/core/messages
         if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
           const toolCallsStr = aiMessage.tool_calls
             .map(
               (tc: ToolCall) =>
-                `\n  Tool: ${tc.name}\n  Args: ${JSON.stringify(tc.args, null, 2)}`,
+                `\n  Tool: ${tc.name}\n  Args: ${JSON.stringify(tc.args, null, 2)}`
             )
             .join("\n");
           content += `\n[Tool Calls: ${toolCallsStr}]`;
@@ -277,12 +283,12 @@ export function formatEmailOptional(
   subject?: string,
   author?: string,
   to?: string,
-  emailThread?: string,
+  emailThread?: string
 ): string {
   return formatEmailMarkdown(
     subject ?? "No Subject",
     author ?? "Unknown Sender",
     to ?? "Unknown Recipient",
-    emailThread ?? "",
+    emailThread ?? ""
   );
 }

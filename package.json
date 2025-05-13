@@ -9,10 +9,10 @@
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "format": "prettier --write .",
     "agent": "langgraphjs dev",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config=tests-ts/jest.config.mjs",
-    "test:hitl": "cross-env NODE_OPTIONS=--experimental-vm-modules AGENT_MODULE=email_assistant_hitl jest --config=tests-ts/jest.config.mjs hitl_testing",
-    "test:memory": "cross-env NODE_OPTIONS=--experimental-vm-modules AGENT_MODULE=email_assistant_hitl_memory jest --config=tests-ts/jest.config.mjs memory_testing",
-    "test:base": "cross-env NODE_OPTIONS=--experimental-vm-modules AGENT_MODULE=email_assistant jest --config=tests-ts/jest.config.mjs test_response"
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config=jest.config.mjs",
+    "test:hitl": "cross-env NODE_OPTIONS=--experimental-vm-modules AGENT_MODULE=email_assistant_hitl jest --config=jest.config.mjs hitl.test.ts",
+    "test:memory": "cross-env NODE_OPTIONS=--experimental-vm-modules AGENT_MODULE=email_assistant_hitl_memory jest --config=jest.config.mjs memory.test.ts",
+    "test:base": "cross-env NODE_OPTIONS=--experimental-vm-modules AGENT_MODULE=email_assistant jest --config=jest.config.mjs response.test.ts"
   },
   "dependencies": {
     "@jest/globals": "^29.7.0",
