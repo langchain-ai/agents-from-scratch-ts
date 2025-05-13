@@ -9,8 +9,39 @@ This repository contains implementations of AI email assistants built using Lang
 - Node.js (v18 or higher recommended)
 - A package manager (npm, yarn, or pnpm)
 
-> [!NOTE]
-> In order to run the typescript notebooks, you must install jupyter or jupyter notebook as well as TS-Lab Kernel to execute the notebook code
+
+### 1. Install Dependencies
+
+Clone the repository and install the necessary packages:
+
+```bash
+npm install
+# or
+yarn install
+# or
+pnpm install
+```
+
+### 2. Environment Setup
+
+Copy the `.env.example` file to  `.env` file in the root of the project and add your OpenAI API key:
+
+```
+OPENAI_API_KEY=your_api_key_here
+```
+it is recommended to also add your langsmith api key, and langsmith_project name to be able to analyze your graph traces in Langsmith.
+
+### 3. Run the Agent
+
+Start the email assistant. This will typically also make it available for interaction and visualization in LangGraph Studio (usually at `http://localhost:PORT/studio` - check your terminal output for the exact port).
+
+```bash
+npm run agent
+# or
+yarn agent
+# or
+pnpm agent
+```
 
 
 ### Typescript Notebooks
@@ -50,38 +81,6 @@ There are also The notebooks assemble the agents in `src/` step by step. You can
 
 
 
-### 1. Install Dependencies
-
-Clone the repository and install the necessary packages:
-
-```bash
-npm install
-# or
-yarn install
-# or
-pnpm install
-```
-
-### 2. Environment Setup
-
-Copy the `.env.example` file to  `.env` file in the root of the project and add your OpenAI API key:
-
-```
-OPENAI_API_KEY=your_api_key_here
-```
-it is recommended to also add your langsmith api key, and langsmith_project name to be able to analyze your graph traces in Langsmith.
-
-### 3. Run the Agent
-
-Start the email assistant. This will typically also make it available for interaction and visualization in LangGraph Studio (usually at `http://localhost:PORT/studio` - check your terminal output for the exact port).
-
-```bash
-npm run agent
-# or
-yarn agent
-# or
-pnpm agent
-```
 
 ## Project Structure
 
