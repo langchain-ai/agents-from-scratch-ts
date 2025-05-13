@@ -59,7 +59,7 @@ export const responsePreferencesTool = tool(
  * Tool to ask a question to the user
  */
 export const questionTool = tool(
-  async ({ content }: { content: string }) => {
+  async ({ content }) => {
     return `The user will see and can answer this question: ${content}`;
   },
   {

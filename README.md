@@ -2,13 +2,12 @@
 
 This repository contains implementations of AI email assistants built using LangGraph.js, a library for building stateful, multi-actor applications with LLMs. It demonstrates how to create, test, and add features like Human-in-the-Loop (HITL) and persistent memory to an AI agent.
 
-
 ### Prerequisites
+
 - Install the latest version of [JupyterLab or Jupyter Notebook](https://jupyter.org/install)
 - Install [TS-Lab Typescript Kernel for Notebooks](https://github.com/yunabe/tslab#display-rich-objects)
 - Node.js (v18 or higher recommended)
 - A package manager (npm, yarn, or pnpm)
-
 
 ### 1. Install Dependencies
 
@@ -24,11 +23,12 @@ pnpm install
 
 ### 2. Environment Setup
 
-Copy the `.env.example` file to  `.env` file in the root of the project and add your OpenAI API key:
+Copy the `.env.example` file to `.env` file in the root of the project and add your OpenAI API key:
 
 ```
 OPENAI_API_KEY=your_api_key_here
 ```
+
 it is recommended to also add your langsmith api key, and langsmith_project name to be able to analyze your graph traces in Langsmith.
 
 ### 3. Run the Agent
@@ -43,23 +43,24 @@ yarn agent
 pnpm agent
 ```
 
-
 ### Typescript Notebooks
- multiple interactive Typescript Jupyter notebooks to go through the process of creating these agentic features.
+
+multiple interactive Typescript Jupyter notebooks to go through the process of creating these agentic features.
+
 - `notebooks/langgraph_101.ipynb`
 - `notebooks/agent.ipynb`
-- `notebooks/hitl.ipynb` 
-- `notebooks/memory.ipynb`  
+- `notebooks/hitl.ipynb`
+- `notebooks/memory.ipynb`
 
-### Email Assistant Scripts 
+### Email Assistant Scripts
+
 Three versions of the email assistant are available in the `src/` directory:
+
 1.  `email_assistant.ts`: A basic email assistant for triage and response.
 2.  `email_assistant_hitl.ts`: Extends the basic assistant with Human-in-the-Loop capabilities for reviewing and intervening in the agent's actions.
 3.  `email_assistant_hitl_memory.ts`: Further extends the HITL assistant with persistent memory to learn from user feedback and preferences.
 
-
 There are also The notebooks assemble the agents in `src/` step by step. You can use **ts-lab kernel instead of the default python kernel** to execute the notebook code cells
-
 
 ## Table of Contents
 
@@ -79,9 +80,6 @@ There are also The notebooks assemble the agents in `src/` step by step. You can
   - [Testing Memory Features](#testing-memory-features)
 - [Development & Debugging](#development--debugging)
 
-
-
-
 ## Project Structure
 
 - `src/`: Contains the core TypeScript source code for the email assistants.
@@ -98,10 +96,10 @@ There are also The notebooks assemble the agents in `src/` step by step. You can
 - `tsconfig.json`: TypeScript configuration.
 - `.env`: Environment variables (gitignored).
 - `notebooks/` contains the interactive notebooks for the email assistants
-    `0_langgraph_101.ipynb` - langgraph fundamentals
-    `1_agent.ipynb` - agentic email assistant
-    `2_hitl.ipynb` - Human in the Loop, Interrupts notebook
-    `3_memory.ipynb` - Human in the loop, with memory notebook 
+  `0_langgraph_101.ipynb` - langgraph fundamentals
+  `1_agent.ipynb` - agentic email assistant
+  `2_hitl.ipynb` - Human in the Loop, Interrupts notebook
+  `3_memory.ipynb` - Human in the loop, with memory notebook
 
 ## Core Concepts & Workflow
 
@@ -151,6 +149,7 @@ The email assistants are built as stateful graphs using LangGraph.js.
 
 Implemented in `email_assistant_hitl.ts` and `email_assistant_hitl_memory.ts`.
 Interactive Notebooks available in `2_hitl.ipynb` and `3_memory.ipynb`
+
 - **Interrupts**: The graph execution pauses at critical junctures:
   - After triage if an email is marked `notify` (`triage_interrupt_handler` node).
   - Before executing certain tool calls within the `response_agent` (`interrupt_handler` node).
@@ -200,6 +199,7 @@ Use this JSON structure as input when testing your agent in the studio:
 ### Understanding Node Outputs
 
 #### Triage Router Node (`triage_router`)
+
 Classifies emails. Expect output like:
 
 ```json
@@ -216,6 +216,7 @@ Classifies emails. Expect output like:
 ```
 
 #### Response Agent Nodes (e.g., `llm_call`, `interrupt_handler`)
+
 Handles response generation.
 
 - `llm_call` output might include tool calls:

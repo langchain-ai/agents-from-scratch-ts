@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DynamicStructuredTool, tool } from "@langchain/core/tools";
+import { tool } from "@langchain/core/tools";
 
 /**
  * Schema for writing an email

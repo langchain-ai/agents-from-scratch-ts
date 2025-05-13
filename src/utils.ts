@@ -1,6 +1,11 @@
 import { EmailData } from "./schemas.js";
 
-import { AIMessage, type BaseMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  isAIMessage,
+  coerceMessageLikeToMessage,
+  type BaseMessage,
+} from "@langchain/core/messages";
 import type { ToolCall } from "@langchain/core/messages/tool";
 
 /**
@@ -222,8 +227,9 @@ export function extractToolCalls(messages: any[]): string[] {
  */
 export function formatMessagesString(messages: BaseMessage[]): string {
   return messages
-    .map((message) => {
+    .map((messageLike) => {
       let prefix = "";
+      const message = coerceMessageLikeToMessage(messageLike);
 
       // Determine prefix based on role
       if ("role" in message && message.role) {
@@ -252,7 +258,7 @@ export function formatMessagesString(messages: BaseMessage[]): string {
           : JSON.stringify(message.content);
 
       // Only AIMessage can have tool_calls
-      if (message._getType() === "ai") {
+      if (isAIMessage(message)) {
         const aiMessage = message as AIMessage; // Cast to AIMessage from @langchain/core/messages
         if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
           const toolCallsStr = aiMessage.tool_calls
