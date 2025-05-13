@@ -32,7 +32,7 @@ ${content}
     description:
       "Write an email draft based on provided information. Use this when the user wants to compose a new email message.",
     schema: emailSchema,
-  }
+  },
 );
 
 /**
@@ -76,7 +76,7 @@ Recommended action: ${priority === "High" ? "Respond immediately" : "Review when
     description:
       "Analyze and categorize an email by importance and type. Use this when evaluating how to handle incoming messages.",
     schema: triageSchema,
-  }
+  },
 );
 
 /**
@@ -99,5 +99,5 @@ export const Done = tool(
     description:
       "Signal that you've completed the current task and no further actions are needed.",
     schema: doneSchema,
-  }
+  },
 );

@@ -20,7 +20,7 @@ export const backgroundTool = tool(
     name: "background",
     description: "Get background information about the user",
     schema: z.object({}).describe("This tool doesn't take any arguments"),
-  }
+  },
 );
 
 /**
@@ -36,7 +36,7 @@ export const calPreferencesTool = tool(
     name: "cal_preferences",
     description: "Get the user's calendar preferences",
     schema: z.object({}).describe("This tool doesn't take any arguments"),
-  }
+  },
 );
 
 /**
@@ -52,7 +52,7 @@ export const responsePreferencesTool = tool(
     name: "response_preferences",
     description: "Get the user's response style preferences",
     schema: z.object({}).describe("This tool doesn't take any arguments"),
-  }
+  },
 );
 
 /**
@@ -68,5 +68,5 @@ export const questionTool = tool(
     schema: z.object({
       content: z.string().describe("The question to ask the user"),
     }),
-  }
+  },
 );
