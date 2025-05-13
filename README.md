@@ -3,14 +3,13 @@
 This repository contains implementations of AI email assistants built using LangGraph.js, a library for building stateful, multi-actor applications with LLMs. It demonstrates how to create, test, and add features like Human-in-the-Loop (HITL) and persistent memory to an AI agent.
 
 Three versions of the email assistant are available in the `src/` directory:
-
 1.  `email_assistant.ts`: A basic email assistant for triage and response.
 2.  `email_assistant_hitl.ts`: Extends the basic assistant with Human-in-the-Loop capabilities for reviewing and intervening in the agent's actions.
 3.  `email_assistant_hitl_memory.ts`: Further extends the HITL assistant with persistent memory to learn from user feedback and preferences.
 
-### Notebooks
+### Typescript Notebooks
 
-There are also multiple interactive Typescript Jupyter notebooks to go through the process of creating these agentic features. You can use ts-lab kernel instead of the default python kernel to execute the notebook code in `agent.ipynb`, `hitl.ipynb`, `memory.ipynb`, and `langgraph_101.ipynb`
+There are also multiple interactive Typescript Jupyter notebooks to go through the process of creating these agentic features. The notebooks assemble the agents in `src/` step by step. You can use **ts-lab kernel instead of the default python kernel** to execute the notebook code in `agent.ipynb`, `hitl.ipynb`, `memory.ipynb`, and `langgraph_101.ipynb`
 
 ## Table of Contents
 
@@ -51,11 +50,12 @@ pnpm install
 
 ### 2. Environment Setup
 
-Create a `.env` file in the root of the project and add your OpenAI API key:
+Copy the `.env.example` file to  `.env` file in the root of the project and add your OpenAI API key:
 
 ```
 OPENAI_API_KEY=your_api_key_here
 ```
+it is recommended to also add your langsmith api key, and langsmith_project name to be able to analyze your graph traces in Langsmith.
 
 ### 3. Run the Agent
 
@@ -84,6 +84,11 @@ pnpm agent
 - `package.json`: Project metadata and scripts.
 - `tsconfig.json`: TypeScript configuration.
 - `.env`: Environment variables (gitignored).
+- `notebooks/` contains the interactive notebooks for the email assistants
+    `0_langgraph_101.ipynb` - langgraph fundamentals
+    `1_agent.ipynb` - agentic email assistant
+    `2_hitl.ipynb` - Human in the Loop, Interrupts notebook
+    `3_memory.ipynb` - Human in the loop, with memory notebook 
 
 ## Core Concepts & Workflow
 
@@ -132,7 +137,7 @@ The email assistants are built as stateful graphs using LangGraph.js.
 ### Human-in-the-Loop (HITL)
 
 Implemented in `email_assistant_hitl.ts` and `email_assistant_hitl_memory.ts`.
-
+Interactive Notebooks available in `2_hitl.ipynb` and `3_memory.ipynb`
 - **Interrupts**: The graph execution pauses at critical junctures:
   - After triage if an email is marked `notify` (`triage_interrupt_handler` node).
   - Before executing certain tool calls within the `response_agent` (`interrupt_handler` node).
@@ -182,7 +187,6 @@ Use this JSON structure as input when testing your agent in the studio:
 ### Understanding Node Outputs
 
 #### Triage Router Node (`triage_router`)
-
 Classifies emails. Expect output like:
 
 ```json
@@ -199,7 +203,6 @@ Classifies emails. Expect output like:
 ```
 
 #### Response Agent Nodes (e.g., `llm_call`, `interrupt_handler`)
-
 Handles response generation.
 
 - `llm_call` output might include tool calls:
@@ -291,9 +294,12 @@ To thoroughly test all graph paths:
 {
   "email_input": {
     "id": "email_123",
+    "thread_id": "thread_abc123",
     "from_email": "client@example.com",
+    "to_email": "support@yourcompany.com",
     "subject": "Question about API documentation",
-    "page_content": "Hello Support Team,\nI'm working on integrating with your API and I can't find the documentation for the '/users' endpoint. Could you please point me to where I can find this information or provide details about the request and response formats?\nThank you,\nSarah Johnson"
+    "page_content": "Hello Support Team,\nI'm working on integrating with your API and I can't find the documentation for the '/users' endpoint. Could you please point me to where I can find this information or provide details about the request and response formats?\nThank you,\nSarah Johnson",
+    "send_time": "2025-05-01T09:00:00Z"
   }
 }
 ```
@@ -308,9 +314,12 @@ To thoroughly test all graph paths:
 {
   "email_input": {
     "id": "email_456",
+    "thread_id": "thread_def456",
     "from_email": "system@example.com",
+    "to_email": "all@yourcompany.com",
     "subject": "System Maintenance - Important Notice",
-    "page_content": "Dear Team,\nThis is to inform you that we will be conducting scheduled system maintenance this Saturday from 10:00 PM to 2:00 AM EST. During this time, the production server will be temporarily unavailable.\nRegards,\nIT Operations"
+    "page_content": "Dear Team,\nThis is to inform you that we will be conducting scheduled system maintenance this Saturday from 10:00 PM to 2:00 AM EST. During this time, the production server will be temporarily unavailable.\nRegards,\nIT Operations",
+    "send_time": "2025-05-02T12:00:00Z"
   }
 }
 ```
@@ -328,9 +337,12 @@ To thoroughly test all graph paths:
 {
   "email_input": {
     "id": "email_789",
+    "thread_id": "thread_ghi789",
     "from_email": "marketing@newsletter.com",
+    "to_email": "user@yourcompany.com",
     "subject": "50% Off Spring Sale - Limited Time Offer!",
-    "page_content": "AMAZING DEALS JUST FOR YOU! Don't miss our Spring Sale..."
+    "page_content": "AMAZING DEALS JUST FOR YOU! Don't miss our Spring Sale...",
+    "send_time": "2025-05-03T08:00:00Z"
   }
 }
 ```
