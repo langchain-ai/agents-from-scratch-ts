@@ -6,6 +6,20 @@ import noInstanceof from "eslint-plugin-no-instanceof";
 import globals from "globals";
 
 export default [
+  {
+    ignores: [
+      "eslint.config.js",
+      "scripts",
+      "src/utils/lodash/*",
+      "node_modules",
+      "dist",
+      "dist-cjs",
+      "*.js",
+      "*.cjs",
+      "**/*.mjs",
+      "*.d.ts",
+    ],
+  },
   js.configs.recommended,
   {
     plugins: {
@@ -34,6 +48,7 @@ export default [
       "dist-cjs",
       "*.js",
       "*.cjs",
+      "**/*.mjs",
       "*.d.ts",
     ],
     rules: {
@@ -43,6 +58,7 @@ export default [
       "@typescript-eslint/no-empty-interface": 0,
       "@typescript-eslint/no-use-before-define": ["error", "nofunc"],
       "@typescript-eslint/no-unused-vars": ["warn", { args: "none" }],
+      "no-unused-vars": "off",
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/no-misused-promises": "error",
       "@typescript-eslint/no-explicit-any": 0,

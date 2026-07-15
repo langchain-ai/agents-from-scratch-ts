@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "format": "prettier --write .",
@@ -14,19 +17,18 @@
   },
   "dependencies": {
     "@jest/globals": "^29.7.0",
-    "@langchain/community": "^1.1.27",
-    "@langchain/core": "^0.3.49",
-    "@langchain/langgraph": "0.2.71",
-    "@langchain/openai": "^0.0.14",
+    "@langchain/core": "^1.2.3",
+    "@langchain/langgraph": "^1.4.7",
+    "@langchain/openai": "^1.5.5",
     "dotenv": "^16.5.0",
-    "langchain": "^0.3.24",
+    "langchain": "^1.5.3",
     "tslab": "^1.0.22",
     "zod": "^3.24.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@eslint/js": "^9.26.0",
-    "@langchain/langgraph-cli": "^0.0.32",
+    "@langchain/langgraph-cli": "^1.4.2",
     "@types/jest": "^29.5.5",
     "@types/node": "^20",
     "@types/uuid": "^9.0.8",
