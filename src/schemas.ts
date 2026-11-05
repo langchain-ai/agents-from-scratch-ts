@@ -1,7 +1,11 @@
 import { z } from "zod";
-import { MessagesZodState } from "@langchain/langgraph";
+import type { BaseMessage } from "@langchain/core/messages";
+import { MessagesZodMeta } from "@langchain/langgraph";
+import { registry } from "@langchain/langgraph/zod";
 
-export const MessagesState = MessagesZodState;
+export const MessagesState = z.object({
+  messages: z.custom<BaseMessage[]>().register(registry, MessagesZodMeta),
+});
 
 // Define the Zod schemas for the email assistant states
 export const BaseEmailAgentState = MessagesState.extend({
